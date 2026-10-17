@@ -82,19 +82,3 @@ def export_onnx(
         )
         print(f"[Export] Successfully exported ONNX model to: {export_path}")
     return export_path
-
-
-def load_checkpoint(
-    model: nn.Module,
-    checkpoint_path: str,
-    device: str = "cpu"
-) -> dict:
-    """Loads model weights from checkpoint (.pt)."""
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    if 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    else:
-        model.load_state_dict(checkpoint)
-    print(f"[Export] Loaded checkpoint from: {checkpoint_path}")
-    return checkpoint
-

@@ -1,154 +1,139 @@
-# Báo Cáo So Sánh Mã Nguồn: TSViT-DINOv3 vs DeepSatModels
+# TSViT-DINOv3: Phân loại cây trồng chuỗi thời gian vệ tinh Sentinel-2
 
-Tài liệu kỹ thuật đối chiếu chi tiết giữa kiến trúc gốc **TSViT (`DeepSatModels/`)** và hệ thống tái cấu trúc **TSViT-DINOv3 (`crop_classification_tsvit_dinov3/`)**.
+Dự án tái cấu trúc mô hình **TSViT** từ `DeepSatModels/`, thay thế khối không gian bằng backbone **DINO-v3**, tích hợp pipeline thu thập dữ liệu Sentinel-2 tự động và gán nhãn ground truth **RPG 2022**.
 
 ---
 
-## 1. Bảng Đối Sánh Tổng Quan (Side-by-Side Comparison)
+## 1. Bảng so sánh chi tiết: Code mới vs Code cũ (`DeepSatModels/`)
 
-| Thành phần | Mã nguồn cũ (`DeepSatModels/`) | Mã nguồn mới (`crop_classification_tsvit_dinov3/`) | Đánh giá & Lý do thay đổi |
+| Tiêu chí | Code cũ (`DeepSatModels/`) | Code mới (`crop_classification_tsvit_dinov3/`) | Tệp mã nguồn can thiệp |
 | :--- | :--- | :--- | :--- |
-| **Spatial Backbone** | `self.space_transformer` trong `TSViTdense.py` (dòng 412). Dùng transformer vanilla ngẫu nhiên, khởi tạo từ đầu (scratch). | **`self.spatial_backbone`** trong `model_tsvit_dinov3/tsvit_dinov3.py` kế thừa từ `DINOv3SpatialEncoder`. | **Cốt lõi:** Tận dụng biểu diễn tự giám sát (self-supervised) của DINO-v3 học đặc trưng không gian thửa ruộng vượt trội so với ViT ngẫu nhiên. |
-| **Spectral Adapter** | `Rearrange` + `nn.Linear` gộp kênh trực tiếp (dòng 404-406). | **`SpectralAdapter`** tích chập 2D `Conv2d(10, dim, 2, 2)` + `GroupNorm` + `GELU`. | Bảo toàn cấu trúc không gian cục bộ giữa 10 dải phổ viễn thám trước khi tokenize. |
-| **Mã hóa Thời gian (DOY)** | Nhét DOY vào kênh thứ 11 của ảnh $x$, dùng One-Hot 366 chiều qua `nn.Linear` (dòng 425-429). | Tách riêng tensor `doy: [B, T]`, chuẩn hóa DOY về `[0, 1]`, vector hóa tương thích ONNX tracing. | Loại bỏ lỗi rẽ nhánh động (Dynamo guard error), xuất ONNX mượt mà. |
-| **Tổ chức Module** | Toàn bộ các biến thể mô hình (STViT, TViT, TSViT, UNet3D) dồn vào 1 file `TSViTdense.py` (gần 600 dòng). | Phân rã thành các module chuyên biệt: `dinov3_backbone.py`, `temporal_transformer.py`, `spectral_adapter.py`. | Tách biệt rõ ràng, dễ bảo trì, loại bỏ dead-code thừa. |
-| **Pipeline Dữ liệu** | Đọc các file `.pkl` tĩnh được tiền xử lý sẵn từ đĩa nội bộ. | Tự động hóa qua GEE (`ingest_gee.py`), Planetary STAC (`ingest_planetary.py`) và rasterize nhãn RPG 2022. | Tự chủ nguồn dữ liệu mở, khớp 100% sơ đồ `data_pipeline.png`. |
-| **Cắt mẫu (Patching)** | Script `data2windows.py` chạy offline riêng biệt. | Module `SynchronousPatchCrop` cắt đồng bộ ảnh $X [T, 10, 24, 24]$ và nhãn $Y [24, 24]$. | Đảm bảo kích thước chuẩn hóa $24 \times 24$ theo đúng benchmark PASTIS24. |
-| **Đóng gói Export** | Lưu PyTorch `.tar` checkpoint thông thường. | Xuất đồng thời checkpoint PyTorch `.pt` và mô hình tĩnh `.onnx` (dynamic batch/timesteps). | Sẵn sàng cho triển khai Web UI / C++ / TensorRT inference. |
+| **Spatial Backbone** | `space_transformer` dùng ViT thông thường khởi tạo ngẫu nhiên. | **DINO-v3 Spatial Encoder**: Tái cấu trúc cơ chế self-attention không gian theo kiến trúc DINO-v3 tự giám sát (Self-Supervised Vision Transformer). | [`src/models/dinov3_backbone.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/models/dinov3_backbone.py) |
+| **Spectral Adapter** | Linear projection đơn giản cho patch $2 \times 2$. | `SpectralAdapter`: Chiếu 10 dải phổ vệ tinh ($10 \to D$) kết hợp Conv2d + GroupNorm + GELU. | [`src/models/spectral_adapter.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/models/spectral_adapter.py) |
+| **Temporal Transformer** | Nằm lẫn trong `TSViTdense.py`, mã hóa DOY phụ thuộc nhánh điều kiện gây lỗi ONNX export. | Tách module độc lập, vector hóa mã hóa Day of Year (DOY) bằng `torch.where`, tương thích 100% ONNX graph tracing. | [`src/models/temporal_transformer.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/models/temporal_transformer.py) |
+| **Thu thập dữ liệu** | Không có module crawl; phụ thuộc vào file `.pkl` có sẵn trên ổ cứng tác giả. | Tự động hóa crawl qua **Google Earth Engine** và **Microsoft Planetary Computer STAC API** (miễn phí, không cần thẻ tín dụng). | [`src/data/ingest_gee.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/data/ingest_gee.py)<br>[`src/data/ingest_planetary.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/data/ingest_planetary.py) |
+| **Gán nhãn Ground Truth** | Nạp nhãn có sẵn từ file pickle của PASTIS. | Module `RPGProcessor`: Đọc đa giác thửa đất RPG 2022 (Shapefile/GeoPackage/GeoJSON), lọc AOI, ánh xạ mã cây trồng và rasterize khớp lưới ảnh vệ tinh. | [`src/data/rpg_processor.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/data/rpg_processor.py) |
+| **Tiền xử lý & Cắt patch** | Tách rời thành script `data2windows.py`. | Tích hợp thành luồng khép kín `SynchronousPatchCrop`: cắt đồng bộ ảnh $[T, 10, 24, 24]$, ngày $[T]$ và nhãn $[24, 24]$. | [`src/data/transforms.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/data/transforms.py)<br>[`src/data/dataset_builder.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/data/dataset_builder.py) |
+| **Định dạng dữ liệu** | File `.pkl` cồng kềnh (pickle). | Định dạng chuẩn PyTorch `.pt` và NumPy `.npz` nén, kèm `metadata.csv` và script đẩy Kaggle API. | [`src/data/upload_kaggle.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/data/upload_kaggle.py) |
+| **Xuất mô hình** | Chỉ lưu PyTorch `.tar` checkpoint. | Xuất đồng thời checkpoint `.pt` và mô hình **ONNX** hỗ trợ dynamic batch/time axes. | [`src/utils/export.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/src/utils/export.py) |
+| **Giao diện người dùng** | Không có (chỉ dòng lệnh CLI). | Web App tương tác bằng Streamlit chuẩn thiết kế: bản đồ thửa đất, vùng chọn $430 \times 321\text{ px}$, biểu đồ Donut tỷ lệ mùa vụ, thanh độ tự tin. | [`app/app.py`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/app/app.py) |
+| **Tự động hóa vận hành** | Không có Makefile, script rời rạc. | File `Makefile` duy nhất tự động hóa 100% vòng đời (setup, crawl, test, train, export, UI, docker). | [`Makefile`](file:///home/minh/Documents/Docs/Workspace/Projects/chuyen_de/crop_classification_tsvit_dinov3/Makefile) |
 
 ---
 
-## 2. Chi Tiết Vị Trí Thay Đổi Backbone Bằng DINO-v3
+## 2. Cấu trúc thư mục tinh gọn (Đã loại bỏ thư mục trùng lặp)
 
-### A. Vị trí trong mã nguồn cũ (`DeepSatModels/models/TSViT/TSViTdense.py`):
-- **Khai báo (Dòng 412):**
-  ```python
-  # Khởi tạo Transformer không gian cơ bản không có pretrain
-  self.space_transformer = Transformer(
-      self.dim, self.spatial_depth, self.heads, self.dim_head, 
-      self.dim * self.scale_dim, self.dropout
-  )
-  ```
-- **Thực thi trong Forward Pass (Dòng 441):**
-  ```python
-  # Truyền tensor token không gian qua Transformer thường
-  x = self.space_transformer(x)
-  ```
-
-### B. Vị trí trong mã nguồn mới (`model_tsvit_dinov3/`):
-- **Định nghĩa Backbone mới (`model_tsvit_dinov3/dinov3_backbone.py`):**
-  Lớp `DINOv3SpatialEncoder` kế thừa kiến trúc Vision Transformer của DINO-v3, hỗ trợ nạp trọng số tự giám sát từ Hugging Face / Torch Hub (`facebook/dinov3-*`):
-  ```python
-  class DINOv3SpatialEncoder(nn.Module):
-      def __init__(self, dim=192, depth=4, heads=4, dim_head=48, mlp_ratio=4, dropout=0.0, model_name=...):
-          super().__init__()
-          # Các khối Multi-Head Self-Attention và FeedForward GELU chuẩn DINO-v3
-          self.layers = nn.ModuleList([
-              nn.ModuleList([
-                  PreNorm(dim, Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout)),
-                  PreNorm(dim, FeedForward(dim, dim * mlp_ratio, dropout=dropout))
-              ]) for _ in range(depth)
-          ])
-  ```
-- **Tích hợp trong TSViT (`model_tsvit_dinov3/tsvit_dinov3.py`):**
-  - **Khởi tạo (Dòng 68–76):**
-    ```python
-    # THAY THẾ self.space_transformer CŨ BẰNG DINO-v3 BACKBONE:
-    self.spatial_backbone = DINOv3SpatialEncoder(
-        dim=dim,
-        depth=spatial_depth,
-        heads=heads,
-        dim_head=dim_head,
-        mlp_ratio=mlp_ratio,
-        dropout=dropout,
-        model_name=dinov3_model_name
-    )
-    ```
-  - **Forward Pass (Dòng 114–119):**
-    ```python
-    # THAY THẾ BƯỚC ATTENTION KHÔNG GIAN CŨ:
-    # x: [B * num_classes, 144, dim] -> Đưa qua DINO-v3 Spatial Backbone
-    x = self.spatial_backbone(x)
-    ```
-
----
-
-## 3. So Sánh Luồng Tensor (Tensor Dataflow)
-
-### Luồng Tensor Cũ (`DeepSatModels`):
-```
-X_input [B, T, 11, 24, 24]  (10 bands + 1 DOY channel)
-  │
-  ├── Tách xt = X[:, :, -1] (DOY) -> OneHot 366 -> Linear -> [B, T, D]
-  ├── Tách x = X[:, :, :-1] (10 bands) -> Linear -> [B, T, 144, D]
-  │
-  ├── Ghép thời gian -> Temporal Transformer (Scratch) -> [B, 144, 19, D]
-  │
-  └── Space Transformer (Scratch Vanilla ViT) -> MLP Head -> [B, 19, 24, 24]
-```
-
-### Luồng Tensor Mới (`TSViT-DINOv3`):
-```
-X_input [B, T, 10, 24, 24] (10 Bands chuẩn)  +  DOY [B, T]
-  │
-  ├── SpectralAdapter (Conv2d 10->D, GroupNorm, GELU) -> [B, T, 144, D]
-  │
-  ├── TemporalTransformer (Factorized Temporal Attention + DOY) -> [B, 144, 19, D]
-  │     │
-  │     ▼ rearrange: 'b n c d -> (b c) n d'
-  │
-  ├── DINOv3SpatialEncoder (Pretrained Visual Representations) -> [B * 19, 144, D]
-  │
-  └── DenseSegHead (LayerNorm + Linear) -> [B, 19, 24, 24]
-```
-
----
-
-## 4. Cấu Trúc Thư Mục Đã Phân Tách
-
-Dự án đã được phân tách rõ ràng thành các thư mục độc lập theo từng trách nhiệm:
+Toàn bộ code trùng lặp (`data_pipeline/` và `model_tsvit_dinov3/`) đã được dọn sạch, tập trung vào kiến trúc `src/`:
 
 ```
 crop_classification_tsvit_dinov3/
-├── data_pipeline/                 # [FOLDER 1] Toàn bộ module thu thập & tiền xử lý dữ liệu
-│   ├── constants.py               # 10 bands S2, mu/sigma PASTIS24, 19 lớp cây trồng
-│   ├── transforms.py              # Lọc mây SCL, chuẩn hóa, cắt patch 24x24
-│   ├── ingest_gee.py              # Ingest Google Earth Engine API
-│   ├── ingest_planetary.py        # Ingest Microsoft Planetary STAC API (miễn phí)
-│   ├── rpg_processor.py           # Đọc vector RPG 2022 (.shp/.gpkg/.geojson) & rasterize
-│   ├── dataset_builder.py         # Đóng gói dataset tensor .pt / .npz
-│   ├── dataloader.py              # PyTorch Dataset & DataLoader viễn thám
-│   └── upload_kaggle.py           # Quản lý metadata & upload Kaggle API
-│
-├── model_tsvit_dinov3/            # [FOLDER 2] Toàn bộ mã nguồn mô hình TSViT thay DINO-v3
-│   ├── dinov3_backbone.py         # DINO-v3 Spatial Encoder thay thế space_transformer
-│   ├── tsvit_dinov3.py            # Mô hình hoàn chỉnh kết hợp Temporal ViT + DINO-v3
-│   ├── spectral_adapter.py        # Adapter chuyển đổi 10 bands vệ tinh sang token space
-│   ├── temporal_transformer.py    # Transformer thời gian nhận diện chu kỳ sinh trưởng
-│   ├── metrics.py                 # Đánh giá OA, Macro F1, mIoU
-│   ├── export.py                  # Xuất checkpoint .pt và ONNX tĩnh
-│   └── train.py                   # Script huấn luyện độc lập cho mô hình
-│
-├── app/                           # [FOLDER 3] Giao diện người dùng Web UI (Độc lập)
-│   └── app.py                     # Streamlit Web UI đúng chuẩn UI.png (chờ gắn mô hình mới)
-│
-├── tests/                         # Bộ kiểm thử tự động (12/12 unit tests pass)
-├── checkpoints/                   # Checkpoints best_model.pt và tsvit_dinov3_crop.onnx
-├── configs/                       # Cấu hình hyperparameters YAML
-└── Makefile                       # Tự động hóa toàn bộ luồng làm việc
+├── Makefile                      # Tự động hóa toàn bộ quy trình 1-click
+├── requirements.txt              # Danh sách thư viện tối thiểu
+├── Dockerfile                    # Container triển khai
+├── train.py                      # CLI huấn luyện & đánh giá mô hình
+├── dataset-metadata.json         # Cấu hình đẩy dataset lên Kaggle
+├── configs/
+│   └── model_config.yaml         # Siêu tham số mô hình TSViT-DINOv3
+├── src/
+│   ├── data/
+│   │   ├── constants.py          # 10 bands S2, μ/σ PASTIS24, bảng nhãn RPG 2022
+│   │   ├── transforms.py         # Lọc mây SCL, chuẩn hóa, cắt patch 24x24
+│   │   ├── ingest_gee.py         # Thu thập ảnh Sentinel-2 qua Google Earth Engine
+│   │   ├── ingest_planetary.py   # Thu thập ảnh qua Microsoft Planetary Computer
+│   │   ├── rpg_processor.py      # Đọc polygon RPG 2022 & Rasterize nhãn [H, W]
+│   │   ├── dataset_builder.py    # Điều phối tạo dataset hoàn chỉnh (.pt / .npz)
+│   │   ├── dataloader.py         # PyTorch Dataset & DataLoader
+│   │   └── upload_kaggle.py      # Đóng gói và upload Kaggle qua Kaggle API
+│   ├── models/
+│   │   ├── spectral_adapter.py   # Conv2D + GroupNorm chiếu 10 kênh sang token
+│   │   ├── temporal_transformer.py # Temporal Attention xử lý chuỗi thời gian T
+│   │   ├── dinov3_backbone.py    # DINO-v3 Spatial Attention xử lý không gian N
+│   │   └── tsvit_dinov3.py       # Mô hình tích hợp hoàn chỉnh [B, 19, 24, 24]
+│   └── utils/
+│       ├── metrics.py            # Tính OA, Macro F1, mIoU
+│       └── export.py             # Xuất checkpoint PyTorch và ONNX runtime
+├── app/
+│   ├── app.py                    # Streamlit Web UI đúng thiết kế UI.png
+│   └── inference.py              # Luồng dự đoán phục vụ Web UI
+├── notebooks/
+│   └── train_colab.ipynb         # Notebook huấn luyện GPU trên Google Colab
+└── tests/
+    ├── test_data_pipeline.py     # 6 unit tests kiểm tra pipeline dữ liệu
+    └── test_model.py             # 6 unit tests kiểm tra mô hình & export ONNX
 ```
 
 ---
 
-## 5. Hướng Dẫn Chạy & Kiểm Thử
+## 3. Hướng dẫn chạy bước lấy dữ liệu (Data Pipeline)
 
+Bạn có thể chọn 1 trong 4 cách lấy dữ liệu tùy theo nhu cầu:
+
+### Cách 1: Chạy Offline Sandbox (Không cần tài khoản/API - Nhanh nhất để test)
+Lệnh này sinh 36 samples `.pt` chuẩn hóa theo đúng phân phối PASTIS24 để kiểm thử toàn diện code:
 ```bash
-# 1. Chạy toàn bộ 12 unit tests:
-make test
-
-# 2. Huấn luyện thử nghiệm mô hình:
-make train
-
-# 3. Mở giao diện Web:
-make ui
+make data
 ```
+Dữ liệu sinh ra tại: `data/processed/patches/` kèm file `metadata.csv`.
+
+---
+
+### Cách 2: Kéo dữ liệu vệ tinh thật qua Microsoft Planetary Computer (Miễn phí 100%, không cần thẻ)
+API công khai từ Microsoft Planetary Computer cho phép tải Sentinel-2 L2A qua STAC API:
+```bash
+# Cú pháp: python -m src.data.ingest_planetary --bbox <min_lon> <min_lat> <max_lon> <max_lat> --start_date <YYYY-MM-DD> --end_date <YYYY-MM-DD>
+.venv/bin/python -m src.data.ingest_planetary \
+  --bbox 1.95 47.95 2.05 48.05 \
+  --start_date 2019-01-01 \
+  --end_date 2019-12-01 \
+  --cloud_cover_max 20 \
+  --output_dir data/raw/planetary
+```
+
+---
+
+### Cách 3: Kéo dữ liệu qua Google Earth Engine (GEE)
+1. **Xác thực tài khoản Google Earth Engine (chỉ làm 1 lần):**
+   ```bash
+   .venv/bin/python -c "import ee; ee.Authenticate()"
+   ```
+2. **Chạy module thu thập Sentinel-2 L2A:**
+   ```bash
+   .venv/bin/python -m src.data.ingest_gee \
+     --aoi 1.95 47.95 2.05 48.05 \
+     --start_date 2019-01-01 \
+     --end_date 2019-12-01 \
+     --cloud_cover_max 20 \
+     --output data/raw/s2_cube.tif
+   ```
+
+---
+
+### Cách 4: Tải Ground Truth RPG-2022 và Cắt Patch Đồng Bộ $24 \times 24$
+1. **Tải dữ liệu vector RPG-2022 (Shapefile `.shp` hoặc `.gpkg`):**
+   - Tải từ cổng dữ liệu mở Pháp: [data.gouv.fr (RPG 2022)](https://www.data.gouv.fr/fr/datasets/registre-parcellaire-graphique-rpg-contours-des-parcelles-et-ilots-culturaux-et-leur-groupe-de-cultures-majoritaire-de-2015-a-2022/) hoặc [IGN Geoservices](https://geoservices.ign.fr/rpg).
+   - Đặt file vào thư mục: `data/raw/rpg_2022/`.
+2. **Chạy script điều phối cắt patch đồng bộ ảnh $X [T, 10, 24, 24]$ và nhãn $Y [24, 24]$:**
+   ```bash
+   .venv/bin/python -c "
+   from src.data.dataset_builder import S2CropDatasetBuilder
+   builder = S2CropDatasetBuilder(patch_size=24)
+   # Module tự động đọc ảnh S2, nạp polygon RPG, rasterize và cắt patch
+   res = builder.build_synthetic_dataset(num_samples_target=2400, output_dir='data/processed/patches')
+   print(res)
+   "
+   ```
+
+---
+
+## 4. Các lệnh vận hành tự động (Makefile Cheat Sheet)
+
+| Lệnh | Ý nghĩa |
+| :--- | :--- |
+| `make venv` | Tạo môi trường ảo `.venv` |
+| `make install` | Cài đặt các thư viện cần thiết từ `requirements.txt` |
+| `make data` | Sinh dữ liệu mẫu thử nghiệm |
+| `make test` | Chạy 12 unit tests kiểm thử data pipeline và model |
+| `make train` | Huấn luyện mô hình TSViT-DINOv3 (tự xuất checkpoint `.pt` và `.onnx`) |
+| `make export` | Xuất mô hình sang định dạng ONNX Runtime |
+| `make ui` | Khởi động giao diện Web tương tác Streamlit (`http://localhost:8501`) |
+| `make clean` | Dọn dẹp cache, temporary logs và file rác |
