@@ -29,8 +29,10 @@ import torch
 
 try:
     from app.inference import CropInferenceEngine
+    from app.planetary import fetch_planetary_sentinel2
 except Exception:
     from inference import CropInferenceEngine
+    from planetary import fetch_planetary_sentinel2
 
 from src.data.constants import CROP_CLASSES_VI, CROP_CLASSES_EN
 
@@ -220,18 +222,173 @@ st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh 
 
 # 1. Controls Card
 with st.container(border=True):
-    # Row 1: Source selector
-    preset_choice = st.selectbox(
-        "Nguồn dữ liệu vệ tinh:",
-        options=list(SAMPLE_PRESETS.keys()) + ["Tải file từ máy tính (TIF, GeoTIFF, PNG, JPG, PT)"],
+    input_mode = st.radio(
+        "Phương thức nạp dữ liệu:",
+        [
+            "🛰️ Lấy ảnh trực tiếp từ vệ tinh (Microsoft Planetary Computer)",
+            "📁 Tải ảnh từ máy tính (TIF, GeoTIFF, PNG, JPG, PT)",
+            "🌾 Chọn cánh đồng mẫu (Đã gắn nhãn RPG 2022)"
+        ],
         index=0,
-        key="source_preset_select"
+        horizontal=True,
+        key="input_mode_selector"
     )
 
-    # Handle preset selection
-    if preset_choice in SAMPLE_PRESETS:
+    if input_mode == "🛰️ Lấy ảnh trực tiếp từ vệ tinh (Microsoft Planetary Computer)":
+        st.markdown("<div style='font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px;'>Gợi ý tọa độ cánh đồng tiêu chuẩn (Bấm để điền nhanh):</div>", unsafe_allow_html=True)
+        b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
+        with b_col1:
+            if st.button("🇫🇷 Lúa mì Beauce", key="qc_wheat", use_container_width=True):
+                st.session_state.lat_val = 48.1250
+                st.session_state.lon_val = 1.8540
+                st.session_state.rad_val = 1200
+                st.session_state.date_val = datetime.date(2022, 6, 15)
+                st.rerun()
+        with b_col2:
+            if st.button("🇫🇷 Cánh đồng Ngô", key="qc_corn", use_container_width=True):
+                st.session_state.lat_val = 48.2140
+                st.session_state.lon_val = 1.9210
+                st.session_state.rad_val = 1150
+                st.session_state.date_val = datetime.date(2022, 7, 20)
+                st.rerun()
+        with b_col3:
+            if st.button("🇫🇷 Cải dầu Eure", key="qc_rapeseed", use_container_width=True):
+                st.session_state.lat_val = 48.0920
+                st.session_state.lon_val = 1.7850
+                st.session_state.rad_val = 1100
+                st.session_state.date_val = datetime.date(2022, 5, 10)
+                st.rerun()
+        with b_col4:
+            if st.button("🇻🇳 ĐB Sông Hồng", key="qc_redriver", use_container_width=True):
+                st.session_state.lat_val = 21.0153
+                st.session_state.lon_val = 105.8245
+                st.session_state.rad_val = 1500
+                st.session_state.date_val = datetime.date(2023, 4, 15)
+                st.rerun()
+        with b_col5:
+            if st.button("🇻🇳 ĐB Sông Cửu Long", key="qc_mekong", use_container_width=True):
+                st.session_state.lat_val = 10.3759
+                st.session_state.lon_val = 105.4358
+                st.session_state.rad_val = 1500
+                st.session_state.date_val = datetime.date(2023, 3, 20)
+                st.rerun()
+
+        lat_default = st.session_state.get('lat_val', 48.1250)
+        lon_default = st.session_state.get('lon_val', 1.8540)
+        rad_default = st.session_state.get('rad_val', 1200)
+        date_default = st.session_state.get('date_val', datetime.date(2022, 6, 15))
+
+        c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.4, 1.8, 1.8])
+        with c1:
+            lat_in = st.number_input("Vĩ độ (Lat)", value=float(lat_default), format="%.4f", min_value=-90.0, max_value=90.0, step=0.001, key="in_lat")
+        with c2:
+            lon_in = st.number_input("Kinh độ (Lon)", value=float(lon_default), format="%.4f", min_value=-180.0, max_value=180.0, step=0.001, key="in_lon")
+        with c3:
+            radius_in = st.number_input("Bán kính (m)", value=int(rad_default), min_value=300, max_value=5000, step=100, help="Khuyên dùng 1000m - 1500m (khoảng 2.4km vuông) để thấy trọn vẹn cánh đồng", key="in_rad")
+        with c4:
+            date_in = st.date_input("Thời gian quan sát", value=date_default, format="DD/MM/YYYY", key="in_date")
+        with c5:
+            st.write("")
+            st.write("")
+            btn_fetch_planetary = st.button("Lấy ảnh vệ tinh & Phân tích", type="primary", use_container_width=True, key="btn_planetary_fetch")
+
+        st.markdown(
+            f'<div class="input-caption">Đang chọn: Vĩ độ <b>{lat_in:.4f}</b> · Kinh độ <b>{lon_in:.4f}</b> · Bán kính <b>{radius_in}m</b> · Ngày <b>{date_in.strftime("%d/%m/%Y")}</b>. Hệ thống tự động tìm ảnh Sentinel-2 không mây từ Microsoft Planetary Computer.</div>',
+            unsafe_allow_html=True
+        )
+
+        if btn_fetch_planetary:
+            with st.spinner(f"Đang kết nối Microsoft Planetary Computer... Tải ảnh Sentinel-2 L2A tại ({lat_in:.4f}, {lon_in:.4f})..."):
+                try:
+                    p_img, p_sits, p_doy, p_meta = fetch_planetary_sentinel2(
+                        lat=lat_in,
+                        lon=lon_in,
+                        radius=float(radius_in),
+                        target_date_str=date_in.strftime("%Y-%m-%d")
+                    )
+                    st.session_state.current_display_img = p_img
+                    st.session_state.current_sits = p_sits
+                    st.session_state.current_doy = p_doy
+                    st.session_state.current_label = None
+                    st.session_state.patch_name = f"Sentinel-2 Live ({p_meta['acquisition_date']}, mây {p_meta['cloud_cover']}%)"
+                    st.session_state.analysis_results = engine.run_inference(p_sits, p_doy)
+                    st.success(f"Đã tải thành công ảnh vệ tinh Sentinel-2 ngày {p_meta['acquisition_date']} (Độ phủ mây: {p_meta['cloud_cover']}%)!")
+                except Exception as e:
+                    st.error(f"Lỗi tải ảnh từ Planetary Computer: {e}")
+
+    elif input_mode == "📁 Tải ảnh từ máy tính (TIF, GeoTIFF, PNG, JPG, PT)":
+        # Mode 2: Only file uploader + date (No lat/lon/radius!)
+        up_c1, up_c2, up_c3 = st.columns([3, 1.5, 1.2])
+        with up_c1:
+            up_file = st.file_uploader(
+                "Chọn file ảnh vệ tinh hoặc TIF viễn thám (.tif, .png, .jpg, .pt):",
+                type=["tif", "tiff", "png", "jpg", "jpeg", "pt"],
+                key="custom_uploader_key"
+            )
+        with up_c2:
+            date_upload = st.date_input("Thời gian thu nhận (Mùa vụ)", value=datetime.date(2022, 6, 15), format="DD/MM/YYYY", key="upload_date_field")
+        with up_c3:
+            st.write("")
+            st.write("")
+            btn_analyze_upload = st.button("Phân tích ảnh", type="primary", use_container_width=True, key="btn_analyze_up")
+
+        st.markdown(
+            '<div class="input-caption">Chế độ tải ảnh từ máy tính: Không cần nhập vĩ độ/kinh độ/bán kính. Ảnh sẽ tự động được giãn tương phản 16-bit sắc nét và đưa vào mô hình.</div>',
+            unsafe_allow_html=True
+        )
+
+        if (up_file is not None and st.session_state.patch_name != up_file.name) or btn_analyze_upload:
+            if up_file is not None:
+                fname = up_file.name.lower()
+                if fname.endswith(".pt"):
+                    loaded = torch.load(up_file, map_location='cpu', weights_only=False)
+                    st.session_state.current_sits = loaded.get('image', loaded.get('s2')).numpy()
+                    st.session_state.current_doy = loaded.get('doy', loaded.get('dates')).numpy()
+                    st.session_state.current_label = loaded.get('label', None)
+                    if st.session_state.current_label is not None and hasattr(st.session_state.current_label, 'numpy'):
+                        st.session_state.current_label = st.session_state.current_label.numpy()
+                    mid_t = st.session_state.current_sits.shape[0] // 2
+                    rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
+                    p2, p98 = np.percentile(rgb, (2, 98))
+                    rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
+                    st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
+                    st.session_state.patch_name = up_file.name
+                    st.session_state.analysis_results = engine.run_inference(
+                        st.session_state.current_sits,
+                        st.session_state.current_doy,
+                        gt_label=st.session_state.current_label
+                    )
+                else:
+                    bytes_data = up_file.read()
+                    disp_pil, sits, doy = CropInferenceEngine.read_any_image_file(bytes_data)
+                    st.session_state.current_sits = sits
+                    st.session_state.current_doy = doy
+                    st.session_state.current_label = None
+                    st.session_state.current_display_img = disp_pil.resize((540, 320), Image.Resampling.NEAREST)
+                    st.session_state.patch_name = up_file.name
+                    st.session_state.analysis_results = engine.run_inference(sits, doy)
+
+    else:  # Preset mode
+        p_c1, p_c2 = st.columns([3, 1.2])
+        with p_c1:
+            preset_choice = st.selectbox(
+                "Chọn cánh đồng vệ tinh mẫu:",
+                options=list(SAMPLE_PRESETS.keys()),
+                index=0,
+                key="source_preset_select"
+            )
+        with p_c2:
+            st.write("")
+            st.write("")
+            btn_run_preset = st.button("Xem & Phân tích", type="primary", use_container_width=True, key="btn_run_preset")
+
         preset_info = SAMPLE_PRESETS[preset_choice]
-        if st.session_state.patch_name != preset_choice:
+        st.markdown(
+            f'<div class="input-caption">Đang chọn: <b>{preset_choice}</b> · Vĩ độ {preset_info["lat"]} · Kinh độ {preset_info["lon"]} · Bán kính {preset_info["radius"]}m · Ngày {preset_info["date"].strftime("%d/%m/%Y")} · Gắn nhãn chuẩn RPG 2022 Cadastre.</div>',
+            unsafe_allow_html=True
+        )
+
+        if st.session_state.patch_name != preset_choice or btn_run_preset or st.session_state.analysis_results is None:
             st.session_state.patch_name = preset_choice
             pt_file = preset_info["pt_path"]
             if os.path.exists(pt_file):
@@ -249,81 +406,7 @@ with st.container(border=True):
                     st.session_state.current_doy,
                     gt_label=st.session_state.current_label
                 )
-        lat_def = preset_info["lat"]
-        lon_def = preset_info["lon"]
-        rad_def = preset_info["radius"]
-        date_def = preset_info["date"]
-    else:
-        lat_def, lon_def, rad_def, date_def = "21.0153", "105.8245", "1157", datetime.date(2022, 6, 1)
-        up_file = st.file_uploader(
-            "Chọn file ảnh hoặc TIF viễn thám:",
-            type=["tif", "tiff", "png", "jpg", "jpeg", "pt"],
-            key="custom_uploader_key"
-        )
-        if up_file is not None and st.session_state.patch_name != up_file.name:
-            fname = up_file.name.lower()
-            if fname.endswith(".pt"):
-                loaded = torch.load(up_file, map_location='cpu', weights_only=False)
-                st.session_state.current_sits = loaded.get('image', loaded.get('s2')).numpy()
-                st.session_state.current_doy = loaded.get('doy', loaded.get('dates')).numpy()
-                st.session_state.current_label = loaded.get('label', None)
-                if st.session_state.current_label is not None and hasattr(st.session_state.current_label, 'numpy'):
-                    st.session_state.current_label = st.session_state.current_label.numpy()
-                mid_t = st.session_state.current_sits.shape[0] // 2
-                rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
-                p2, p98 = np.percentile(rgb, (2, 98))
-                rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
-                st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
-                st.session_state.patch_name = up_file.name
-                st.session_state.analysis_results = engine.run_inference(
-                    st.session_state.current_sits,
-                    st.session_state.current_doy,
-                    gt_label=st.session_state.current_label
-                )
-            else:
-                bytes_data = up_file.read()
-                disp_pil, sits, doy = CropInferenceEngine.read_any_image_file(bytes_data)
-                st.session_state.current_sits = sits
-                st.session_state.current_doy = doy
-                st.session_state.current_label = None
-                st.session_state.current_display_img = disp_pil.resize((540, 320), Image.Resampling.NEAREST)
-                st.session_state.patch_name = up_file.name
-                st.session_state.analysis_results = engine.run_inference(sits, doy)
 
-    # Row 2: Parameters and Analyze Button
-    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.3, 1.8, 1.4])
-    with c1:
-        lat = st.text_input("Vĩ độ", value=lat_def, key="lat_input_field")
-    with c2:
-        lon = st.text_input("Kinh độ", value=lon_def, key="lon_input_field")
-    with c3:
-        radius = st.text_input("Bán kính (m)", value=rad_def, key="rad_input_field")
-    with c4:
-        date_val = st.date_input("Thời gian", value=date_def, format="DD/MM/YYYY", key="date_input_field")
-    with c5:
-        st.write("")
-        st.write("")
-        btn_analyze = st.button("Phân tích", use_container_width=True, type="primary", key="btn_run_analyze")
-
-    st.markdown(
-        f'<div class="input-caption">Đang chọn: <b>{st.session_state.patch_name}</b> · Vĩ độ {lat} · Kinh độ {lon} · Bán kính {radius}m.</div>',
-        unsafe_allow_html=True
-    )
-
-# Execute Inference on Analyze click
-if btn_analyze:
-    with st.spinner("Đang chạy mô hình phân tích chuỗi thời gian..."):
-        if st.session_state.current_sits is not None and st.session_state.current_doy is not None:
-            results = engine.run_inference(
-                st.session_state.current_sits,
-                st.session_state.current_doy,
-                gt_label=st.session_state.get('current_label', None)
-            )
-            st.session_state.analysis_results = results
-        else:
-            synth_x = np.random.randn(25, 10, 24, 24).astype(np.float32)
-            synth_doy = np.linspace(1, 365, 25).astype(np.float32)
-            st.session_state.analysis_results = engine.run_inference(synth_x, synth_doy)
 
 
 # 2. Main Content Columns
