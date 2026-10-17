@@ -19,9 +19,6 @@ try:
 except ImportError:
     STAC_AVAILABLE = False
 
-from app.inference import CropInferenceEngine
-
-
 def enhance_satellite_image(img_pil: Image.Image) -> Image.Image:
     """Enhances clarity, contrast, and color vibrance of Sentinel-2 True Color image."""
     arr = np.array(img_pil, dtype=np.float32)
@@ -45,7 +42,7 @@ def fetch_planetary_sentinel2(
     radius: float = 1200.0,
     target_date_str: str = "2022-06-15",
     max_cloud: float = 25.0
-) -> Tuple[Image.Image, np.ndarray, np.ndarray, Dict]:
+) -> Tuple[Image.Image, Dict]:
     """
     Queries Microsoft Planetary Computer STAC for Sentinel-2 L2A scenes matching (lat, lon, radius, date).
     Streams cloud-free True Color (TCI) window, enhances image clarity, and extracts SITS tensor.
@@ -119,9 +116,6 @@ def fetch_planetary_sentinel2(
     # Enhance contrast & sharpness
     display_pil = enhance_satellite_image(raw_pil)
 
-    # Convert to SITS sequence for model inference
-    sits, doy = CropInferenceEngine.simulate_sits_from_image(display_pil)
-
     meta = {
         "item_id": item.id,
         "acquisition_date": acq_date,
@@ -132,4 +126,5 @@ def fetch_planetary_sentinel2(
         "radius": radius
     }
 
-    return display_pil, sits, doy, meta
+    return display_pil, meta
+

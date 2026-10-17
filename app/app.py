@@ -300,12 +300,13 @@ with st.container(border=True):
         if btn_fetch_planetary:
             with st.spinner(f"Đang kết nối Microsoft Planetary Computer... Tải ảnh Sentinel-2 L2A tại ({lat_in:.4f}, {lon_in:.4f})..."):
                 try:
-                    p_img, p_sits, p_doy, p_meta = fetch_planetary_sentinel2(
+                    p_img, p_meta = fetch_planetary_sentinel2(
                         lat=lat_in,
                         lon=lon_in,
                         radius=float(radius_in),
                         target_date_str=date_in.strftime("%Y-%m-%d")
                     )
+                    p_sits, p_doy = CropInferenceEngine.simulate_sits_from_image(p_img)
                     st.session_state.current_display_img = p_img
                     st.session_state.current_sits = p_sits
                     st.session_state.current_doy = p_doy
