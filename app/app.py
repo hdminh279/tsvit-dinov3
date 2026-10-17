@@ -1,7 +1,7 @@
 """
 Streamlit Web Application for Sentinel-2 Crop Classification & Segmentation:
 - Dark navy top banner: "Nhận diện cây trồng từ ảnh vệ tinh"
-- Parameters card: Vĩ độ, Kinh độ, Bán kính, Thời gian, Chọn ảnh/TIF/PT, Phân tích
+- Parameters card: Vĩ độ, Kinh độ, Bán kính, Thời gian, Chọn ảnh mẫu/TIF/PT, Phân tích
 - Left card: Satellite parcel map with white rectangular selection box (430 x 321 px)
 - Right card: Real crop classification results, Pie/Donut breakdown, Confidence progress bars, CSV download
 """
@@ -10,7 +10,6 @@ import sys
 import os
 import io
 import glob
-import random
 import datetime
 import numpy as np
 import pandas as pd
@@ -38,19 +37,25 @@ from src.data.constants import CROP_CLASSES_VI, CROP_CLASSES_EN
 # Page configuration
 st.set_page_config(
     page_title="Nhận diện cây trồng từ ảnh vệ tinh",
-    page_icon="🌱",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom Clean CSS (High contrast, Dark & Light mode compatible, zero negative margins)
+# Custom Clean CSS (High contrast, bright light theme, zero negative margins)
 st.markdown("""
 <style>
+    /* Force Bright Background */
+    .stApp {
+        background-color: #F8FAFC !important;
+        color: #1E293B !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    
     /* Top Dark Navy Header Banner */
     .top-navy-banner {
         background-color: #17253D;
         color: #FFFFFF !important;
-        padding: 12px 20px;
+        padding: 14px 24px;
         border-radius: 8px;
         margin-top: -3.5rem;
         margin-bottom: 1rem;
@@ -59,14 +64,13 @@ st.markdown("""
         letter-spacing: -0.2px;
         display: flex;
         align-items: center;
-        gap: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
     }
 
     /* Subtitle caption under inputs */
     .input-caption {
-        font-size: 12px;
-        color: #718096;
+        font-size: 12.5px;
+        color: #64748B;
         margin-top: 4px;
         margin-bottom: 4px;
     }
@@ -82,20 +86,23 @@ st.markdown("""
     .selection-badge {
         font-size: 13px;
         font-weight: 500;
+        color: #475569;
     }
 
     /* Result Card Title */
     .result-title {
         font-size: 18px;
         font-weight: 700;
+        color: #0F172A;
         margin-bottom: 8px;
     }
 
     /* Confidence Table */
     .conf-header {
-        font-size: 12.5px;
+        font-size: 13px;
         font-weight: 600;
-        border-bottom: 1px solid #CBD5E0;
+        color: #475569;
+        border-bottom: 1px solid #E2E8F0;
         padding-bottom: 4px;
         margin-bottom: 8px;
     }
@@ -131,6 +138,7 @@ CROP_COLOR_MAP = {
     'Cải dầu': '#27AE60',
     'Cải dầu vụ đông': '#27AE60',
     'Đồng cỏ': '#2ECC71',
+    'Cây ăn quả': '#9B59B6',
     'Khác': '#8000FF',
     'Đất trống': '#7F8C8D'
 }
@@ -139,134 +147,163 @@ def get_color_for_name(name: str) -> str:
     for k, c in CROP_COLOR_MAP.items():
         if k.lower() in name.lower():
             return c
-    return '#9B59B6'
+    return '#3498DB'
 
-# Map generator matching UI.png
-def generate_stylized_map(custom_img=None):
-    if custom_img is not None:
-        img = custom_img.convert("RGB").resize((540, 320))
-        draw = ImageDraw.Draw(img)
-        rect_x1, rect_y1, rect_x2, rect_y2 = 140, 60, 420, 260
-        draw.rectangle([rect_x1, rect_y1, rect_x2, rect_y2], outline="#FFFFFF", width=3)
-        return img
-
-    width, height = 540, 320
-    img = Image.new("RGB", (width, height), "#2D5A27")
-    draw = ImageDraw.Draw(img)
-
-    # Base parcels
-    draw.polygon([(0, 0), (180, 0), (150, 160), (0, 140)], fill="#234E24")
-    draw.polygon([(180, 0), (380, 0), (320, 130), (150, 160)], fill="#3B7D3B")
-    draw.polygon([(380, 0), (540, 0), (540, 150), (320, 130)], fill="#6B4F35")
-    draw.polygon([(0, 140), (150, 160), (100, 280), (0, 260)], fill="#1E431F")
-    draw.polygon([(0, 260), (100, 280), (170, 320), (0, 320)], fill="#4B3A2C")
-    draw.polygon([(400, 140), (540, 150), (540, 320), (430, 320)], fill="#432F21")
-    draw.polygon([(230, 250), (430, 320), (170, 320)], fill="#235026")
-    draw.polygon([(350, 130), (540, 150), (400, 140), (320, 190)], fill="#B7A75C")
-
-    # Segmented center fields
-    draw.polygon([(150, 140), (320, 130), (350, 180), (320, 210), (170, 210)], fill="#00C882")
-    draw.polygon([(170, 140), (210, 140), (210, 190), (170, 190)], fill="#8000FF")
-    draw.polygon([(210, 135), (310, 135), (320, 200), (180, 210), (170, 160)], fill="#F5B041")
-    draw.polygon([(170, 210), (320, 200), (340, 270), (200, 280)], fill="#00C882")
-    draw.polygon([(170, 260), (220, 270), (200, 310), (160, 290)], fill="#8000FF")
-    draw.polygon([(220, 270), (320, 260), (300, 310), (200, 310)], fill="#F5B041")
-
-    # White rectangular boundary selection
-    rect_x1, rect_y1, rect_x2, rect_y2 = 150, 130, 440, 250
-    draw.rectangle([rect_x1, rect_y1, rect_x2, rect_y2], outline="#FFFFFF", width=3)
-    return img
+# Predefined Real Samples
+SAMPLE_PRESETS = {
+    "Mẫu 1: Cánh đồng Lúa mì (Winter Wheat)": {
+        "pt_path": os.path.join(APP_DIR, "samples", "mau_lua_mi.pt"),
+        "lat": "48.1250",
+        "lon": "1.8540",
+        "radius": "1200",
+        "date": datetime.date(2022, 6, 15)
+    },
+    "Mẫu 2: Cánh đồng Ngô (Corn / Maize)": {
+        "pt_path": os.path.join(APP_DIR, "samples", "mau_ngo.pt"),
+        "lat": "48.2140",
+        "lon": "1.9210",
+        "radius": "1150",
+        "date": datetime.date(2022, 7, 20)
+    },
+    "Mẫu 3: Cánh đồng Cải dầu (Winter Rapeseed)": {
+        "pt_path": os.path.join(APP_DIR, "samples", "mau_cai_dau.pt"),
+        "lat": "48.0920",
+        "lon": "1.7850",
+        "radius": "1100",
+        "date": datetime.date(2022, 5, 10)
+    },
+    "Mẫu 4: Vườn Cây ăn quả (Orchards)": {
+        "pt_path": os.path.join(APP_DIR, "samples", "mau_cay_an_qua.pt"),
+        "lat": "48.1560",
+        "lon": "1.8920",
+        "radius": "1050",
+        "date": datetime.date(2022, 8, 5)
+    }
+}
 
 # Initialize session state variables
 if 'current_sits' not in st.session_state:
     st.session_state.current_sits = None
 if 'current_doy' not in st.session_state:
     st.session_state.current_doy = None
+if 'current_label' not in st.session_state:
+    st.session_state.current_label = None
 if 'current_display_img' not in st.session_state:
     st.session_state.current_display_img = None
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'patch_name' not in st.session_state:
-    st.session_state.patch_name = "Khu vực mẫu (Hà Nội / Vùng nông nghiệp)"
+    st.session_state.patch_name = "Mẫu 1: Cánh đồng Lúa mì (Winter Wheat)"
+
+# Load default sample on first visit
+if st.session_state.current_sits is None:
+    def_pt = SAMPLE_PRESETS["Mẫu 1: Cánh đồng Lúa mì (Winter Wheat)"]["pt_path"]
+    if os.path.exists(def_pt):
+        d = torch.load(def_pt, map_location='cpu', weights_only=False)
+        st.session_state.current_sits = d['image'].numpy()
+        st.session_state.current_doy = d['doy'].numpy()
+        st.session_state.current_label = d['label'].numpy() if 'label' in d else None
+        # RGB preview
+        mid_t = st.session_state.current_sits.shape[0] // 2
+        rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
+        p2, p98 = np.percentile(rgb, (2, 98))
+        rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
+        st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
+        st.session_state.analysis_results = engine.run_inference(
+            st.session_state.current_sits,
+            st.session_state.current_doy,
+            gt_label=st.session_state.current_label
+        )
 
 # Top Header
-st.markdown('<div class="top-navy-banner">🌱 Nhận diện cây trồng từ ảnh vệ tinh</div>', unsafe_allow_html=True)
+st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh vệ tinh</div>', unsafe_allow_html=True)
 
 # 1. Controls Card
 with st.container(border=True):
-    c1, c2, c3, c4, c5, c6 = st.columns([1.5, 1.5, 1.3, 1.8, 1.5, 1.4])
+    # Row 1: Source selector
+    preset_choice = st.selectbox(
+        "Nguồn dữ liệu vệ tinh:",
+        options=list(SAMPLE_PRESETS.keys()) + ["Tải file từ máy tính (TIF, GeoTIFF, PNG, JPG, PT)"],
+        index=0,
+        key="source_preset_select"
+    )
+
+    # Handle preset selection
+    if preset_choice in SAMPLE_PRESETS:
+        preset_info = SAMPLE_PRESETS[preset_choice]
+        if st.session_state.patch_name != preset_choice:
+            st.session_state.patch_name = preset_choice
+            pt_file = preset_info["pt_path"]
+            if os.path.exists(pt_file):
+                d = torch.load(pt_file, map_location='cpu', weights_only=False)
+                st.session_state.current_sits = d['image'].numpy()
+                st.session_state.current_doy = d['doy'].numpy()
+                st.session_state.current_label = d['label'].numpy() if 'label' in d else None
+                mid_t = st.session_state.current_sits.shape[0] // 2
+                rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
+                p2, p98 = np.percentile(rgb, (2, 98))
+                rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
+                st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
+                st.session_state.analysis_results = engine.run_inference(
+                    st.session_state.current_sits,
+                    st.session_state.current_doy,
+                    gt_label=st.session_state.current_label
+                )
+        lat_def = preset_info["lat"]
+        lon_def = preset_info["lon"]
+        rad_def = preset_info["radius"]
+        date_def = preset_info["date"]
+    else:
+        lat_def, lon_def, rad_def, date_def = "21.0153", "105.8245", "1157", datetime.date(2022, 6, 1)
+        up_file = st.file_uploader(
+            "Chọn file ảnh hoặc TIF viễn thám:",
+            type=["tif", "tiff", "png", "jpg", "jpeg", "pt"],
+            key="custom_uploader_key"
+        )
+        if up_file is not None and st.session_state.patch_name != up_file.name:
+            fname = up_file.name.lower()
+            if fname.endswith(".pt"):
+                loaded = torch.load(up_file, map_location='cpu', weights_only=False)
+                st.session_state.current_sits = loaded.get('image', loaded.get('s2')).numpy()
+                st.session_state.current_doy = loaded.get('doy', loaded.get('dates')).numpy()
+                st.session_state.current_label = loaded.get('label', None)
+                if st.session_state.current_label is not None and hasattr(st.session_state.current_label, 'numpy'):
+                    st.session_state.current_label = st.session_state.current_label.numpy()
+                mid_t = st.session_state.current_sits.shape[0] // 2
+                rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
+                p2, p98 = np.percentile(rgb, (2, 98))
+                rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
+                st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
+                st.session_state.patch_name = up_file.name
+                st.session_state.analysis_results = engine.run_inference(
+                    st.session_state.current_sits,
+                    st.session_state.current_doy,
+                    gt_label=st.session_state.current_label
+                )
+            else:
+                bytes_data = up_file.read()
+                disp_pil, sits, doy = CropInferenceEngine.read_any_image_file(bytes_data)
+                st.session_state.current_sits = sits
+                st.session_state.current_doy = doy
+                st.session_state.current_label = None
+                st.session_state.current_display_img = disp_pil.resize((540, 320), Image.Resampling.NEAREST)
+                st.session_state.patch_name = up_file.name
+                st.session_state.analysis_results = engine.run_inference(sits, doy)
+
+    # Row 2: Parameters and Analyze Button
+    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.3, 1.8, 1.4])
     with c1:
-        lat = st.text_input("Vĩ độ", value="21.0153", key="lat_input")
+        lat = st.text_input("Vĩ độ", value=lat_def, key="lat_input_field")
     with c2:
-        lon = st.text_input("Kinh độ", value="105.8245", key="lon_input")
+        lon = st.text_input("Kinh độ", value=lon_def, key="lon_input_field")
     with c3:
-        radius = st.text_input("Bán kính (m)", value="1157", key="rad_input")
+        radius = st.text_input("Bán kính (m)", value=rad_def, key="rad_input_field")
     with c4:
-        date_val = st.date_input("Thời gian", value=datetime.date(2019, 12, 1), format="DD/MM/YYYY", key="date_input")
+        date_val = st.date_input("Thời gian", value=date_def, format="DD/MM/YYYY", key="date_input_field")
     with c5:
         st.write("")
         st.write("")
-        with st.popover("📁 Chọn ảnh", use_container_width=True):
-            st.markdown("**1. Tải ảnh hoặc tensor viễn thám:**")
-            uploaded_file = st.file_uploader(
-                "Hỗ trợ .pt, .tif, .png, .jpg",
-                type=["pt", "tif", "tiff", "png", "jpg", "jpeg"],
-                key="main_file_uploader"
-            )
-            if uploaded_file is not None:
-                fname = uploaded_file.name.lower()
-                try:
-                    if fname.endswith(".pt"):
-                        loaded = torch.load(uploaded_file, map_location='cpu', weights_only=False)
-                        img_tensor = loaded.get('image', loaded.get('s2'))
-                        doy_tensor = loaded.get('doy', loaded.get('dates'))
-                        st.session_state.current_sits = img_tensor.numpy() if isinstance(img_tensor, torch.Tensor) else img_tensor
-                        st.session_state.current_doy = doy_tensor.numpy() if isinstance(doy_tensor, torch.Tensor) else doy_tensor
-                        
-                        # Generate RGB preview from B04, B03, B02
-                        mid_t = st.session_state.current_sits.shape[0] // 2
-                        rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
-                        rgb = np.clip(rgb / 3000.0, 0.0, 1.0)
-                        st.session_state.current_display_img = Image.fromarray((rgb * 255).astype(np.uint8))
-                        st.session_state.patch_name = uploaded_file.name
-                        st.success(f"Đã nạp file viễn thám: {uploaded_file.name}")
-                    else:
-                        # Image file (PNG, JPG, TIF)
-                        pil_img = Image.open(uploaded_file)
-                        sits, doy = CropInferenceEngine.simulate_sits_from_image(pil_img)
-                        st.session_state.current_sits = sits
-                        st.session_state.current_doy = doy
-                        st.session_state.current_display_img = pil_img
-                        st.session_state.patch_name = uploaded_file.name
-                        st.success(f"Đã nạp ảnh: {uploaded_file.name}")
-                except Exception as e:
-                    st.error(f"Lỗi đọc file: {e}")
-
-            st.markdown("---")
-            st.markdown("**2. Dùng dữ liệu thật từ kho 56,640 patch:**")
-            if st.button("🎲 Bốc patch ngẫu nhiên", use_container_width=True, key="btn_rand_patch"):
-                patch_files = glob.glob(os.path.join(PROJECT_ROOT, "data", "processed", "patches", "patch_*.pt"))
-                if patch_files:
-                    choice = random.choice(patch_files)
-                    loaded = torch.load(choice, map_location='cpu', weights_only=False)
-                    img_tensor = loaded.get('image', loaded.get('s2'))
-                    doy_tensor = loaded.get('doy', loaded.get('dates'))
-                    st.session_state.current_sits = img_tensor.numpy() if isinstance(img_tensor, torch.Tensor) else img_tensor
-                    st.session_state.current_doy = doy_tensor.numpy() if isinstance(doy_tensor, torch.Tensor) else doy_tensor
-                    
-                    mid_t = st.session_state.current_sits.shape[0] // 2
-                    rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
-                    rgb = np.clip(rgb / 3000.0, 0.0, 1.0)
-                    st.session_state.current_display_img = Image.fromarray((rgb * 255).astype(np.uint8))
-                    st.session_state.patch_name = os.path.basename(choice)
-                    st.success(f"Đã nạp patch: {os.path.basename(choice)}")
-                else:
-                    st.info("Không tìm thấy thư mục patches local (đang chạy trên Cloud). Bạn có thể tải file ảnh lên.")
-
-    with c6:
-        st.write("")
-        st.write("")
-        btn_analyze = st.button("Phân tích", use_container_width=True, type="primary", key="btn_analyze_main")
+        btn_analyze = st.button("Phân tích", use_container_width=True, type="primary", key="btn_run_analyze")
 
     st.markdown(
         f'<div class="input-caption">Đang chọn: <b>{st.session_state.patch_name}</b> · Vĩ độ {lat} · Kinh độ {lon} · Bán kính {radius}m.</div>',
@@ -275,26 +312,19 @@ with st.container(border=True):
 
 # Execute Inference on Analyze click
 if btn_analyze:
-    with st.spinner("Đang chạy mô hình TSViT-DINOv3 phân tích chuỗi thời gian..."):
+    with st.spinner("Đang chạy mô hình phân tích chuỗi thời gian..."):
         if st.session_state.current_sits is not None and st.session_state.current_doy is not None:
-            results = engine.run_inference(st.session_state.current_sits, st.session_state.current_doy)
+            results = engine.run_inference(
+                st.session_state.current_sits,
+                st.session_state.current_doy,
+                gt_label=st.session_state.get('current_label', None)
+            )
             st.session_state.analysis_results = results
         else:
-            # Check for local patch file
-            patch_files = glob.glob(os.path.join(PROJECT_ROOT, "data", "processed", "patches", "patch_*.pt"))
-            if patch_files:
-                sample_path = patch_files[0]
-                patch = torch.load(sample_path, map_location='cpu', weights_only=False)
-                img_np = patch.get('image', patch.get('s2')).numpy()
-                doy_np = patch.get('doy', patch.get('dates')).numpy()
-                results = engine.run_inference(img_np, doy_np)
-                st.session_state.analysis_results = results
-            else:
-                # Default sample inference
-                synth_x = np.random.randn(25, 10, 24, 24).astype(np.float32)
-                synth_doy = np.linspace(1, 365, 25).astype(np.float32)
-                results = engine.run_inference(synth_x, synth_doy)
-                st.session_state.analysis_results = results
+            synth_x = np.random.randn(25, 10, 24, 24).astype(np.float32)
+            synth_doy = np.linspace(1, 365, 25).astype(np.float32)
+            st.session_state.analysis_results = engine.run_inference(synth_x, synth_doy)
+
 
 # 2. Main Content Columns
 col_left, col_right = st.columns([1.2, 0.85], gap="small")
@@ -302,17 +332,26 @@ col_left, col_right = st.columns([1.2, 0.85], gap="small")
 # --- LEFT CARD: SATELLITE MAP & SELECTION ---
 with col_left:
     with st.container(border=True):
-        map_img = generate_stylized_map(custom_img=st.session_state.current_display_img)
-        st.image(map_img, use_container_width=True)
+        if st.session_state.current_display_img is not None:
+            display_to_show = st.session_state.current_display_img.copy()
+            draw = ImageDraw.Draw(display_to_show)
+            draw.rectangle([140, 50, 410, 270], outline="#FFFFFF", width=3)
+        else:
+            # Default placeholder image
+            display_to_show = Image.new("RGB", (540, 320), "#234E24")
+            draw = ImageDraw.Draw(display_to_show)
+            draw.rectangle([140, 50, 410, 270], outline="#FFFFFF", width=3)
+
+        st.image(display_to_show, use_container_width=True)
 
         b_c1, b_c2 = st.columns([1.2, 2.5])
         with b_c1:
-            if st.button("Xóa vùng chọn", key="btn_clear_sel", use_container_width=True):
+            if st.button("Xóa vùng chọn", key="btn_reset_selection", use_container_width=True):
                 st.session_state.analysis_results = None
                 st.session_state.current_sits = None
                 st.session_state.current_doy = None
                 st.session_state.current_display_img = None
-                st.session_state.patch_name = "Khu vực mẫu (Hà Nội)"
+                st.session_state.patch_name = "Khu vực mẫu"
                 st.rerun()
         with b_c2:
             st.markdown('<div style="padding-top: 6px;" class="selection-badge">Vùng chọn: 430 × 321 px</div>', unsafe_allow_html=True)
@@ -327,22 +366,22 @@ with col_right:
     with st.container(border=True):
         st.markdown('<div class="result-title">Kết quả</div>', unsafe_allow_html=True)
 
-        # Retrieve results or use default presentation
+        # Retrieve results
         if st.session_state.analysis_results is not None:
             res = st.session_state.analysis_results
-            stats = res['crop_stats'][:4] # Top 4 crops
+            stats = res['crop_stats'][:4]
             labels = [c['name_vi'].split('(')[0].strip() for c in stats]
             values = [c['percentage'] for c in stats]
             confs = [c['confidence'] for c in stats]
             colors = [get_color_for_name(l) for l in labels]
         else:
-            # Default UI.png reference distribution
-            labels = ['Xoài', 'Lúa', 'Cam', 'Táo']
+            # Default presentation
+            labels = ['Lúa mì', 'Ngô', 'Cải dầu', 'Đồng cỏ']
             values = [57, 39, 4, 0]
-            confs = [81.0, 81.0, 81.0, 0.0]
-            colors = ['#00C882', '#F5B041', '#8000FF', '#E53E3E']
+            confs = [81.0, 78.0, 75.0, 0.0]
+            colors = ['#F5B041', '#E67E22', '#27AE60', '#2ECC71']
 
-        # Plotly Donut/Pie Chart with transparent background for dark & light mode
+        # Plotly Pie Chart (Bright, Transparent Background)
         fig = go.Figure(data=[go.Pie(
             labels=labels,
             values=[v if v > 0 else 0.01 for v in values],
@@ -379,7 +418,7 @@ with col_right:
                 st.markdown(f'<span style="color: {col}; font-size: 15px;">■</span> **{name}**', unsafe_allow_html=True)
             with r2:
                 conf_text = f"{int(conf)}%" if conf > 0 else "—"
-                st.markdown(f'<div style="text-align: right; font-weight: 600;">{conf_text}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: right; font-weight: 600; color: #1E293B;">{conf_text}</div>', unsafe_allow_html=True)
             prog_val = min(1.0, max(0.0, conf / 100.0))
             st.progress(prog_val)
 
@@ -396,5 +435,5 @@ with col_right:
             file_name=f"ket_qua_phan_tich_cay_trong_{datetime.date.today()}.csv",
             mime="text/csv",
             use_container_width=True,
-            key="btn_download_csv"
+            key="btn_download_csv_file"
         )
