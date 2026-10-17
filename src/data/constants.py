@@ -64,31 +64,31 @@ CROP_CLASSES_EN = {
     13: "Vines / Vineyard",
     14: "Fruit trees / Orchards",
     15: "Fallow",
-    16: "Tuber crops (Potato)",
+    16: "Tuber crops Potato",
     17: "Sugar beet",
     18: "Other cereals"
 }
 
 CROP_CLASSES_VI = {
-    0: "Đất trống / Khác",
-    1: "Đồng cỏ / Cây thức ăn gia súc",
-    2: "Lúa mì mùa đông",
-    3: "Ngô (Bắp)",
+    0: "Đất trống",
+    1: "Đồng cỏ",
+    2: "Lúa mì",
+    3: "Ngô",
     4: "Đại mạch vụ đông",
-    5: "Cải dầu vụ đông",
+    5: "Cải dầu",
     6: "Đại mạch vụ xuân",
     7: "Hướng dương",
-    8: "Đậu tương (Đậu nành)",
+    8: "Đậu tương",
     9: "Đậu Hà Lan",
-    10: "Cây họ đậu lấy hạt",
+    10: "Cây họ đậu",
     11: "Đậu khác",
-    12: "Rau màu / Hoa",
+    12: "Rau màu",
     13: "Vườn nho",
-    14: "Cây ăn quả (Táo, Cam, Xoài)",
+    14: "Cây ăn quả",
     15: "Đất hoang hóa",
-    16: "Cây lấy củ (Khoai tây)",
+    16: "Cây lấy củ",
     17: "Củ cải đường",
-    18: "Ngũ cốc khác (Lúa nước, Yến mạch)"
+    18: "Ngũ cốc khác"
 }
 
 NUM_CLASSES = len(CROP_CLASSES_EN)

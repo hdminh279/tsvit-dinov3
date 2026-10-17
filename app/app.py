@@ -134,7 +134,7 @@ CROP_COLOR_MAP = {
     'Lúa': '#F5B041',
     'Lúa mì': '#F5B041',
     'Lúa mì mùa đông': '#F5B041',
-    'Ngô (Bắp)': '#E67E22',
+    'Ngô': '#E67E22',
     'Cam': '#8000FF',
     'Táo': '#E53E3E',
     'Cải dầu': '#27AE60',
@@ -153,33 +153,54 @@ def get_color_for_name(name: str) -> str:
 
 # Predefined Real Samples
 SAMPLE_PRESETS = {
-    "Mẫu 1: Cánh đồng Lúa mì (Winter Wheat)": {
+    "Cánh đồng lúa mì": {
         "pt_path": os.path.join(APP_DIR, "samples", "mau_lua_mi.pt"),
         "lat": "48.1250",
         "lon": "1.8540",
         "radius": "1200",
         "date": datetime.date(2022, 6, 15)
     },
-    "Mẫu 2: Cánh đồng Ngô (Corn / Maize)": {
+    "Cánh đồng ngô": {
         "pt_path": os.path.join(APP_DIR, "samples", "mau_ngo.pt"),
         "lat": "48.2140",
         "lon": "1.9210",
         "radius": "1150",
         "date": datetime.date(2022, 7, 20)
     },
-    "Mẫu 3: Cánh đồng Cải dầu (Winter Rapeseed)": {
+    "Cánh đồng cải dầu": {
         "pt_path": os.path.join(APP_DIR, "samples", "mau_cai_dau.pt"),
         "lat": "48.0920",
         "lon": "1.7850",
         "radius": "1100",
         "date": datetime.date(2022, 5, 10)
     },
-    "Mẫu 4: Vườn Cây ăn quả (Orchards)": {
+    "Vườn cây ăn quả": {
         "pt_path": os.path.join(APP_DIR, "samples", "mau_cay_an_qua.pt"),
         "lat": "48.1560",
         "lon": "1.8920",
         "radius": "1050",
         "date": datetime.date(2022, 8, 5)
+    }
+}
+
+LOCATION_PRESETS = {
+    "Cánh đồng lúa mì Beauce": {
+        "lat": 48.1250, "lon": 1.8540, "radius": 1200, "date": datetime.date(2022, 6, 15)
+    },
+    "Cánh đồng ngô Loiret": {
+        "lat": 48.2140, "lon": 1.9210, "radius": 1150, "date": datetime.date(2022, 7, 20)
+    },
+    "Cánh đồng cải dầu Eure": {
+        "lat": 48.0920, "lon": 1.7850, "radius": 1100, "date": datetime.date(2022, 5, 10)
+    },
+    "Vùng nông nghiệp Hà Nội": {
+        "lat": 21.0153, "lon": 105.8245, "radius": 1500, "date": datetime.date(2023, 4, 15)
+    },
+    "Vùng lúa nước An Giang": {
+        "lat": 10.3759, "lon": 105.4358, "radius": 1500, "date": datetime.date(2023, 3, 20)
+    },
+    "Tự nhập tọa độ": {
+        "lat": 48.1250, "lon": 1.8540, "radius": 1200, "date": datetime.date(2022, 6, 15)
     }
 }
 
@@ -195,11 +216,11 @@ if 'current_display_img' not in st.session_state:
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'patch_name' not in st.session_state:
-    st.session_state.patch_name = "Mẫu 1: Cánh đồng Lúa mì (Winter Wheat)"
+    st.session_state.patch_name = "Cánh đồng lúa mì"
 
 # Load default sample on first visit
 if st.session_state.current_sits is None:
-    def_pt = SAMPLE_PRESETS["Mẫu 1: Cánh đồng Lúa mì (Winter Wheat)"]["pt_path"]
+    def_pt = SAMPLE_PRESETS["Cánh đồng lúa mì"]["pt_path"]
     if os.path.exists(def_pt):
         d = torch.load(def_pt, map_location='cpu', weights_only=False)
         st.session_state.current_sits = d['image'].numpy()
@@ -222,83 +243,47 @@ st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh 
 
 # 1. Controls Card
 with st.container(border=True):
-    input_mode = st.radio(
-        "Phương thức nạp dữ liệu:",
+    input_mode = st.selectbox(
+        "Phương thức nạp dữ liệu",
         [
-            "🛰️ Lấy ảnh trực tiếp từ vệ tinh (Microsoft Planetary Computer)",
-            "📁 Tải ảnh từ máy tính (TIF, GeoTIFF, PNG, JPG, PT)",
-            "🌾 Chọn cánh đồng mẫu (Đã gắn nhãn RPG 2022)"
+            "Ảnh vệ tinh trực tiếp Sentinel-2",
+            "Tải ảnh từ máy tính",
+            "Cánh đồng mẫu kiểm chuẩn"
         ],
         index=0,
-        horizontal=True,
         key="input_mode_selector"
     )
 
-    if input_mode == "🛰️ Lấy ảnh trực tiếp từ vệ tinh (Microsoft Planetary Computer)":
-        st.markdown("<div style='font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px;'>Gợi ý tọa độ cánh đồng tiêu chuẩn (Bấm để điền nhanh):</div>", unsafe_allow_html=True)
-        b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
-        with b_col1:
-            if st.button("🇫🇷 Lúa mì Beauce", key="qc_wheat", use_container_width=True):
-                st.session_state.lat_val = 48.1250
-                st.session_state.lon_val = 1.8540
-                st.session_state.rad_val = 1200
-                st.session_state.date_val = datetime.date(2022, 6, 15)
-                st.rerun()
-        with b_col2:
-            if st.button("🇫🇷 Cánh đồng Ngô", key="qc_corn", use_container_width=True):
-                st.session_state.lat_val = 48.2140
-                st.session_state.lon_val = 1.9210
-                st.session_state.rad_val = 1150
-                st.session_state.date_val = datetime.date(2022, 7, 20)
-                st.rerun()
-        with b_col3:
-            if st.button("🇫🇷 Cải dầu Eure", key="qc_rapeseed", use_container_width=True):
-                st.session_state.lat_val = 48.0920
-                st.session_state.lon_val = 1.7850
-                st.session_state.rad_val = 1100
-                st.session_state.date_val = datetime.date(2022, 5, 10)
-                st.rerun()
-        with b_col4:
-            if st.button("🇻🇳 ĐB Sông Hồng", key="qc_redriver", use_container_width=True):
-                st.session_state.lat_val = 21.0153
-                st.session_state.lon_val = 105.8245
-                st.session_state.rad_val = 1500
-                st.session_state.date_val = datetime.date(2023, 4, 15)
-                st.rerun()
-        with b_col5:
-            if st.button("🇻🇳 ĐB Sông Cửu Long", key="qc_mekong", use_container_width=True):
-                st.session_state.lat_val = 10.3759
-                st.session_state.lon_val = 105.4358
-                st.session_state.rad_val = 1500
-                st.session_state.date_val = datetime.date(2023, 3, 20)
-                st.rerun()
-
-        lat_default = st.session_state.get('lat_val', 48.1250)
-        lon_default = st.session_state.get('lon_val', 1.8540)
-        rad_default = st.session_state.get('rad_val', 1200)
-        date_default = st.session_state.get('date_val', datetime.date(2022, 6, 15))
+    if input_mode == "Ảnh vệ tinh trực tiếp Sentinel-2":
+        loc_choice = st.selectbox(
+            "Vị trí cánh đồng quan sát",
+            options=list(LOCATION_PRESETS.keys()),
+            index=0,
+            key="planetary_location_choice"
+        )
+        preset_data = LOCATION_PRESETS[loc_choice]
 
         c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.4, 1.8, 1.8])
         with c1:
-            lat_in = st.number_input("Vĩ độ (Lat)", value=float(lat_default), format="%.4f", min_value=-90.0, max_value=90.0, step=0.001, key="in_lat")
+            lat_in = st.number_input("Vĩ độ", value=float(preset_data["lat"]), format="%.4f", min_value=-90.0, max_value=90.0, step=0.001, key=f"in_lat_{loc_choice}")
         with c2:
-            lon_in = st.number_input("Kinh độ (Lon)", value=float(lon_default), format="%.4f", min_value=-180.0, max_value=180.0, step=0.001, key="in_lon")
+            lon_in = st.number_input("Kinh độ", value=float(preset_data["lon"]), format="%.4f", min_value=-180.0, max_value=180.0, step=0.001, key=f"in_lon_{loc_choice}")
         with c3:
-            radius_in = st.number_input("Bán kính (m)", value=int(rad_default), min_value=300, max_value=5000, step=100, help="Khuyên dùng 1000m - 1500m (khoảng 2.4km vuông) để thấy trọn vẹn cánh đồng", key="in_rad")
+            radius_in = st.number_input("Bán kính mét", value=int(preset_data["radius"]), min_value=300, max_value=5000, step=100, key=f"in_rad_{loc_choice}")
         with c4:
-            date_in = st.date_input("Thời gian quan sát", value=date_default, format="DD/MM/YYYY", key="in_date")
+            date_in = st.date_input("Thời gian quan sát", value=preset_data["date"], format="DD/MM/YYYY", key=f"in_date_{loc_choice}")
         with c5:
             st.write("")
             st.write("")
-            btn_fetch_planetary = st.button("Lấy ảnh vệ tinh & Phân tích", type="primary", use_container_width=True, key="btn_planetary_fetch")
+            btn_fetch_planetary = st.button("Lấy ảnh và phân tích", type="primary", use_container_width=True, key="btn_planetary_fetch")
 
         st.markdown(
-            f'<div class="input-caption">Đang chọn: Vĩ độ <b>{lat_in:.4f}</b> · Kinh độ <b>{lon_in:.4f}</b> · Bán kính <b>{radius_in}m</b> · Ngày <b>{date_in.strftime("%d/%m/%Y")}</b>. Hệ thống tự động tìm ảnh Sentinel-2 không mây từ Microsoft Planetary Computer.</div>',
+            f'<div class="input-caption">Tọa độ {lat_in:.4f}, {lon_in:.4f} · Bán kính {radius_in} mét · Ngày {date_in.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer</div>',
             unsafe_allow_html=True
         )
 
         if btn_fetch_planetary:
-            with st.spinner(f"Đang kết nối Microsoft Planetary Computer... Tải ảnh Sentinel-2 L2A tại ({lat_in:.4f}, {lon_in:.4f})..."):
+            with st.spinner("Đang kết nối Microsoft Planetary Computer và tải ảnh Sentinel-2..."):
                 try:
                     p_img, p_meta = fetch_planetary_sentinel2(
                         lat=lat_in,
@@ -311,30 +296,29 @@ with st.container(border=True):
                     st.session_state.current_sits = p_sits
                     st.session_state.current_doy = p_doy
                     st.session_state.current_label = None
-                    st.session_state.patch_name = f"Sentinel-2 Live ({p_meta['acquisition_date']}, mây {p_meta['cloud_cover']}%)"
+                    st.session_state.patch_name = f"Sentinel-2 ngày {p_meta['acquisition_date']} phủ mây {p_meta['cloud_cover']}%"
                     st.session_state.analysis_results = engine.run_inference(p_sits, p_doy)
-                    st.success(f"Đã tải thành công ảnh vệ tinh Sentinel-2 ngày {p_meta['acquisition_date']} (Độ phủ mây: {p_meta['cloud_cover']}%)!")
+                    st.success(f"Đã tải thành công ảnh Sentinel-2 ngày {p_meta['acquisition_date']} với độ phủ mây {p_meta['cloud_cover']}%")
                 except Exception as e:
                     st.error(f"Lỗi tải ảnh từ Planetary Computer: {e}")
 
-    elif input_mode == "📁 Tải ảnh từ máy tính (TIF, GeoTIFF, PNG, JPG, PT)":
-        # Mode 2: Only file uploader + date (No lat/lon/radius!)
+    elif input_mode == "Tải ảnh từ máy tính":
         up_c1, up_c2, up_c3 = st.columns([3, 1.5, 1.2])
         with up_c1:
             up_file = st.file_uploader(
-                "Chọn file ảnh vệ tinh hoặc TIF viễn thám (.tif, .png, .jpg, .pt):",
+                "Chọn tệp ảnh vệ tinh hoặc viễn thám",
                 type=["tif", "tiff", "png", "jpg", "jpeg", "pt"],
                 key="custom_uploader_key"
             )
         with up_c2:
-            date_upload = st.date_input("Thời gian thu nhận (Mùa vụ)", value=datetime.date(2022, 6, 15), format="DD/MM/YYYY", key="upload_date_field")
+            date_upload = st.date_input("Thời gian quan sát", value=datetime.date(2022, 6, 15), format="DD/MM/YYYY", key="upload_date_field")
         with up_c3:
             st.write("")
             st.write("")
             btn_analyze_upload = st.button("Phân tích ảnh", type="primary", use_container_width=True, key="btn_analyze_up")
 
         st.markdown(
-            '<div class="input-caption">Chế độ tải ảnh từ máy tính: Không cần nhập vĩ độ/kinh độ/bán kính. Ảnh sẽ tự động được giãn tương phản 16-bit sắc nét và đưa vào mô hình.</div>',
+            '<div class="input-caption">Tự động chuẩn hóa dải màu 16 bit và trích xuất chuỗi thời gian nhận diện cây trồng</div>',
             unsafe_allow_html=True
         )
 
@@ -369,11 +353,11 @@ with st.container(border=True):
                     st.session_state.patch_name = up_file.name
                     st.session_state.analysis_results = engine.run_inference(sits, doy)
 
-    else:  # Preset mode
+    else:
         p_c1, p_c2 = st.columns([3, 1.2])
         with p_c1:
             preset_choice = st.selectbox(
-                "Chọn cánh đồng vệ tinh mẫu:",
+                "Cánh đồng mẫu",
                 options=list(SAMPLE_PRESETS.keys()),
                 index=0,
                 key="source_preset_select"
@@ -381,11 +365,11 @@ with st.container(border=True):
         with p_c2:
             st.write("")
             st.write("")
-            btn_run_preset = st.button("Xem & Phân tích", type="primary", use_container_width=True, key="btn_run_preset")
+            btn_run_preset = st.button("Xem và phân tích", type="primary", use_container_width=True, key="btn_run_preset")
 
         preset_info = SAMPLE_PRESETS[preset_choice]
         st.markdown(
-            f'<div class="input-caption">Đang chọn: <b>{preset_choice}</b> · Vĩ độ {preset_info["lat"]} · Kinh độ {preset_info["lon"]} · Bán kính {preset_info["radius"]}m · Ngày {preset_info["date"].strftime("%d/%m/%Y")} · Gắn nhãn chuẩn RPG 2022 Cadastre.</div>',
+            f'<div class="input-caption">Đang chọn: {preset_choice} · Tọa độ {preset_info["lat"]}, {preset_info["lon"]} · Bán kính {preset_info["radius"]} mét · Ngày {preset_info["date"].strftime("%d/%m/%Y")} · Dữ liệu chuẩn RPG 2022 Cadastre</div>',
             unsafe_allow_html=True
         )
 
@@ -408,8 +392,6 @@ with st.container(border=True):
                     gt_label=st.session_state.current_label
                 )
 
-
-
 # 2. Main Content Columns
 col_left, col_right = st.columns([1.2, 0.85], gap="small")
 
@@ -421,7 +403,6 @@ with col_left:
             draw = ImageDraw.Draw(display_to_show)
             draw.rectangle([140, 50, 410, 270], outline="#FFFFFF", width=3)
         else:
-            # Default placeholder image
             display_to_show = Image.new("RGB", (540, 320), "#234E24")
             draw = ImageDraw.Draw(display_to_show)
             draw.rectangle([140, 50, 410, 270], outline="#FFFFFF", width=3)
@@ -438,34 +419,33 @@ with col_left:
                 st.session_state.patch_name = "Khu vực mẫu"
                 st.rerun()
         with b_c2:
-            st.markdown('<div style="padding-top: 6px;" class="selection-badge">Vùng chọn: 430 × 321 px</div>', unsafe_allow_html=True)
+            st.markdown('<div style="padding-top: 6px;" class="selection-badge">Kích thước: 430 × 321 pixel</div>', unsafe_allow_html=True)
 
         st.markdown(
-            '<div class="status-text">Đã phân tích xong vùng chọn (430 × 321 px).</div>',
+            '<div class="status-text">Đã hoàn tất phân tích vùng ảnh 430 × 321 pixel.</div>',
             unsafe_allow_html=True
         )
 
 # --- RIGHT CARD: RESULTS & CONFIDENCE ---
 with col_right:
     with st.container(border=True):
-        st.markdown('<div class="result-title">Kết quả</div>', unsafe_allow_html=True)
+        st.markdown('<div class="result-title">Kết quả phân tích</div>', unsafe_allow_html=True)
 
         # Retrieve results
         if st.session_state.analysis_results is not None:
             res = st.session_state.analysis_results
             stats = res['crop_stats'][:4]
-            labels = [c['name_vi'].split('(')[0].strip() for c in stats]
+            labels = [c['name_vi'].replace('(', '').replace(')', '').strip() for c in stats]
             values = [c['percentage'] for c in stats]
             confs = [c['confidence'] for c in stats]
             colors = [get_color_for_name(l) for l in labels]
         else:
-            # Default presentation
             labels = ['Lúa mì', 'Ngô', 'Cải dầu', 'Đồng cỏ']
             values = [57, 39, 4, 0]
             confs = [81.0, 78.0, 75.0, 0.0]
             colors = ['#F5B041', '#E67E22', '#27AE60', '#2ECC71']
 
-        # Plotly Pie Chart (Bright, Transparent Background)
+        # Plotly Pie Chart
         fig = go.Figure(data=[go.Pie(
             labels=labels,
             values=[v if v > 0 else 0.01 for v in values],
@@ -491,7 +471,7 @@ with col_right:
         # Confidence Table Header
         h1, h2 = st.columns([3, 1])
         with h1:
-            st.markdown('<div class="conf-header">Nhãn</div>', unsafe_allow_html=True)
+            st.markdown('<div class="conf-header">Cây trồng</div>', unsafe_allow_html=True)
         with h2:
             st.markdown('<div class="conf-header" style="text-align: right;">Độ tự tin</div>', unsafe_allow_html=True)
 
@@ -499,7 +479,7 @@ with col_right:
         for name, pct, conf, col in zip(labels, values, confs, colors):
             r1, r2 = st.columns([3, 1])
             with r1:
-                st.markdown(f'<span style="color: {col}; font-size: 15px;">■</span> **{name}**', unsafe_allow_html=True)
+                st.markdown(f'<span style="background-color: {col}; width: 10px; height: 10px; display: inline-block; border-radius: 2px; margin-right: 6px; vertical-align: middle;"></span> **{name}**', unsafe_allow_html=True)
             with r2:
                 conf_text = f"{int(conf)}%" if conf > 0 else "—"
                 st.markdown(f'<div style="text-align: right; font-weight: 600; color: #1E293B;">{conf_text}</div>', unsafe_allow_html=True)
@@ -508,13 +488,13 @@ with col_right:
 
         st.write("")
         # Download Results CSV
-        csv_rows = ["Nhan,Ty_Le_Phan_Tram,Do_Tu_Tin"]
+        csv_rows = ["Cay_Trong,Ty_Le_Phan_Tram,Do_Tu_Tin"]
         for name, pct, conf in zip(labels, values, confs):
             csv_rows.append(f"{name},{pct}%,{conf}%")
         csv_report = "\n".join(csv_rows)
 
         st.download_button(
-            label="Tải kết quả",
+            label="Tải kết quả phân tích",
             data=csv_report,
             file_name=f"ket_qua_phan_tich_cay_trong_{datetime.date.today()}.csv",
             mime="text/csv",
