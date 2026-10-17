@@ -217,26 +217,10 @@ if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'patch_name' not in st.session_state:
     st.session_state.patch_name = "Cánh đồng lúa mì"
-
-# Load default sample on first visit
-if st.session_state.current_sits is None:
-    def_pt = SAMPLE_PRESETS["Cánh đồng lúa mì"]["pt_path"]
-    if os.path.exists(def_pt):
-        d = torch.load(def_pt, map_location='cpu', weights_only=False)
-        st.session_state.current_sits = d['image'].numpy()
-        st.session_state.current_doy = d['doy'].numpy()
-        st.session_state.current_label = d['label'].numpy() if 'label' in d else None
-        # RGB preview
-        mid_t = st.session_state.current_sits.shape[0] // 2
-        rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
-        p2, p98 = np.percentile(rgb, (2, 98))
-        rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
-        st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
-        st.session_state.analysis_results = engine.run_inference(
-            st.session_state.current_sits,
-            st.session_state.current_doy,
-            gt_label=st.session_state.current_label
-        )
+if 'active_planetary_loc' not in st.session_state:
+    st.session_state.active_planetary_loc = None
+if 'active_preset_choice' not in st.session_state:
+    st.session_state.active_preset_choice = None
 
 # Top Header
 st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh vệ tinh</div>', unsafe_allow_html=True)
@@ -282,7 +266,13 @@ with st.container(border=True):
             unsafe_allow_html=True
         )
 
-        if btn_fetch_planetary:
+        should_fetch_planetary = (
+            btn_fetch_planetary
+            or (loc_choice != "Tự nhập tọa độ" and st.session_state.active_planetary_loc != loc_choice)
+            or (st.session_state.current_display_img is None)
+        )
+
+        if should_fetch_planetary:
             with st.spinner("Đang kết nối Microsoft Planetary Computer và tải ảnh Sentinel-2..."):
                 try:
                     p_img, p_meta = fetch_planetary_sentinel2(
@@ -298,7 +288,9 @@ with st.container(border=True):
                     st.session_state.current_label = None
                     st.session_state.patch_name = f"Sentinel-2 ngày {p_meta['acquisition_date']} phủ mây {p_meta['cloud_cover']}%"
                     st.session_state.analysis_results = engine.run_inference(p_sits, p_doy)
-                    st.success(f"Đã tải thành công ảnh Sentinel-2 ngày {p_meta['acquisition_date']} với độ phủ mây {p_meta['cloud_cover']}%")
+                    st.session_state.active_planetary_loc = loc_choice
+                    if btn_fetch_planetary:
+                        st.success(f"Đã tải thành công ảnh Sentinel-2 ngày {p_meta['acquisition_date']} với độ phủ mây {p_meta['cloud_cover']}%")
                 except Exception as e:
                     st.error(f"Lỗi tải ảnh từ Planetary Computer: {e}")
 
@@ -373,8 +365,15 @@ with st.container(border=True):
             unsafe_allow_html=True
         )
 
-        if st.session_state.patch_name != preset_choice or btn_run_preset or st.session_state.analysis_results is None:
+        should_load_preset = (
+            st.session_state.active_preset_choice != preset_choice
+            or btn_run_preset
+            or st.session_state.analysis_results is None
+        )
+
+        if should_load_preset:
             st.session_state.patch_name = preset_choice
+            st.session_state.active_preset_choice = preset_choice
             pt_file = preset_info["pt_path"]
             if os.path.exists(pt_file):
                 d = torch.load(pt_file, map_location='cpu', weights_only=False)
@@ -399,30 +398,28 @@ col_left, col_right = st.columns([1.2, 0.85], gap="small")
 with col_left:
     with st.container(border=True):
         if st.session_state.current_display_img is not None:
-            display_to_show = st.session_state.current_display_img.copy()
-            draw = ImageDraw.Draw(display_to_show)
-            draw.rectangle([140, 50, 410, 270], outline="#FFFFFF", width=3)
+            display_to_show = st.session_state.current_display_img
         else:
             display_to_show = Image.new("RGB", (540, 320), "#234E24")
-            draw = ImageDraw.Draw(display_to_show)
-            draw.rectangle([140, 50, 410, 270], outline="#FFFFFF", width=3)
 
         st.image(display_to_show, use_container_width=True)
 
         b_c1, b_c2 = st.columns([1.2, 2.5])
         with b_c1:
-            if st.button("Xóa vùng chọn", key="btn_reset_selection", use_container_width=True):
+            if st.button("Làm mới ảnh", key="btn_reset_selection", use_container_width=True):
                 st.session_state.analysis_results = None
                 st.session_state.current_sits = None
                 st.session_state.current_doy = None
                 st.session_state.current_display_img = None
+                st.session_state.active_planetary_loc = None
+                st.session_state.active_preset_choice = None
                 st.session_state.patch_name = "Khu vực mẫu"
                 st.rerun()
         with b_c2:
-            st.markdown('<div style="padding-top: 6px;" class="selection-badge">Kích thước: 430 × 321 pixel</div>', unsafe_allow_html=True)
+            st.markdown('<div style="padding-top: 6px;" class="selection-badge">Kích thước ảnh: 540 × 320 pixel</div>', unsafe_allow_html=True)
 
         st.markdown(
-            '<div class="status-text">Đã hoàn tất phân tích vùng ảnh 430 × 321 pixel.</div>',
+            '<div class="status-text">Đã hoàn tất phân tích nhận diện cây trồng.</div>',
             unsafe_allow_html=True
         )
 
