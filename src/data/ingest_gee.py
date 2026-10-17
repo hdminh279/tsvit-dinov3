@@ -103,3 +103,38 @@ class Sentinel2GEEIngestor:
         # Returns (images_array, doy_array)
         # Note: In production pipeline, tile download or batch export is recommended.
         return np.array([]), np.array(doys, dtype=np.float32)
+
+
+def main():
+    import argparse
+    import os
+    parser = argparse.ArgumentParser(description="Ingest Sentinel-2 time-series via Google Earth Engine")
+    parser.add_argument("--aoi", nargs=4, type=float, required=True,
+                        help="Area of Interest: min_lon min_lat max_lon max_lat (e.g. 1.95 47.95 2.05 48.05)")
+    parser.add_argument("--start_date", type=str, default="2019-01-01",
+                        help="Start acquisition date YYYY-MM-DD")
+    parser.add_argument("--end_date", type=str, default="2019-12-01",
+                        help="End acquisition date YYYY-MM-DD")
+    parser.add_argument("--cloud_cover_max", type=float, default=20.0,
+                        help="Maximum cloudy pixel percentage (default: 20)")
+    parser.add_argument("--output", type=str, default="data/raw/s2_cube.tif",
+                        help="Target output GeoTIFF file path")
+
+    args = parser.parse_args()
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+
+    print(f"[GEE] Initializing Google Earth Engine ingestor...")
+    ingestor = Sentinel2GEEIngestor()
+    if not ingestor.initialized:
+        print("[GEE] Earth Engine not authenticated. Please run: .venv/bin/python -c 'import ee; ee.Authenticate()'")
+        return
+
+    print(f"[GEE] Querying collection COPERNICUS/S2_SR_HARMONIZED for AOI {args.aoi}...")
+    col = ingestor.build_collection(args.aoi, args.start_date, args.end_date, args.cloud_cover_max)
+    count = col.size().getInfo()
+    print(f"[GEE] Found {count} scenes in date range {args.start_date} to {args.end_date} with cloud < {args.cloud_cover_max}%")
+
+
+if __name__ == "__main__":
+    main()
+

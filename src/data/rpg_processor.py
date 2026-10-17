@@ -78,37 +78,6 @@ class RPGProcessor:
         return raster
 
     @staticmethod
-    def generate_synthetic_aoi_parcels(
-        bounds: Tuple[float, float, float, float],
-        grid_rows: int = 6,
-        grid_cols: int = 6,
-        seed: int = 42
-    ) -> List[Tuple[Polygon, str]]:
-        """
-        Generates realistic synthetic agricultural parcels within an AOI for testing and verification.
-        """
-        rng = np.random.default_rng(seed)
-        minx, miny, maxx, maxy = bounds
-        dx = (maxx - minx) / grid_cols
-        dy = (maxy - miny) / grid_rows
-
-        valid_codes = list(RPG_2022_GROUP_MAP.keys())
-        parcels = []
-
-        for r in range(grid_rows):
-            for c in range(grid_cols):
-                # Add slight jitter to parcel boundaries to mimic organic field shapes
-                jitter = 0.05
-                p_minx = minx + c * dx + rng.uniform(-jitter * dx, jitter * dx)
-                p_miny = miny + r * dy + rng.uniform(-jitter * dy, jitter * dy)
-                p_maxx = minx + (c + 1) * dx + rng.uniform(-jitter * dx, jitter * dx)
-                p_maxy = miny + (r + 1) * dy + rng.uniform(-jitter * dy, jitter * dy)
-
-                poly = box(p_minx, p_miny, p_maxx, p_maxy)
-                code = rng.choice(valid_codes)
-                parcels.append((poly, code))
-
-        return parcels
 
     @staticmethod
     def load_parcels_from_file(

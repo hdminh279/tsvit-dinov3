@@ -1,7 +1,7 @@
 """
 End-to-End dataset builder for Sentinel-2 time series and RPG 2022 crop labels.
 Coordinates ingestion, normalization, RPG polygon rasterization, 24x24 patch cropping,
-and dataset serialization (.pt / .npy).
+and dataset serialization (.pt / .npz).
 """
 
 from typing import Dict, List, Optional, Tuple, Union
@@ -63,41 +63,28 @@ class S2CropDatasetBuilder:
         samples = self.cropper(images_norm, doy_norm, label_raster)
         return samples
 
-    def build_synthetic_dataset(
+    def build_dataset_from_arrays(
         self,
-        num_timestamps: int = 30,
-        height: int = 144,
-        width: int = 144,
-        num_samples_target: int = 36,
+        images_raw: np.ndarray,
+        doy_raw: np.ndarray,
+        label_raster: np.ndarray,
         output_dir: str = "data/processed",
+        scl_raster: Optional[np.ndarray] = None,
+        num_samples_target: Optional[int] = None,
         save_format: str = "pt"
     ) -> Dict[str, Union[int, str]]:
         """
-        Generates and saves a realistic synthetic dataset for pipeline validation and unit testing.
+        Processes real multi-temporal satellite imagery and ground truth raster into 24x24 patches.
         """
         os.makedirs(output_dir, exist_ok=True)
-        rng = np.random.default_rng(42)
+        T, C, H, W = images_raw.shape
 
-        # 1. Generate multi-temporal DOYs (e.g. from day 15 to 330)
-        doy_raw = np.linspace(15, 335, num_timestamps).astype(np.float32)
+        samples = self.process_and_crop(images_raw, doy_raw, label_raster, scl_raster=scl_raster)
+        if num_samples_target is not None:
+            samples = samples[:num_samples_target]
 
-        # 2. Generate synthetic S2 10-band reflectance
-        # Base values centered around PASTIS24 mean
-        base_reflectance = S2_MEAN_10B.reshape(1, 10, 1, 1)
-        variability = rng.normal(0, 0.3 * S2_STD_10B.reshape(1, 10, 1, 1), size=(num_timestamps, 10, height, width))
-        images_raw = np.clip(base_reflectance + variability, 0, 10000).astype(np.float32)
-
-        # 3. Generate synthetic RPG 2022 parcel polygons and rasterize
-        bounds = (2.0, 48.0, 2.05, 48.05)  # Sample AOI near Paris / Île-de-France
-        parcels = RPGProcessor.generate_synthetic_aoi_parcels(bounds, grid_rows=6, grid_cols=6)
-        label_raster = self.rpg_processor.rasterize_parcels(parcels, bounds, (height, width))
-
-        # 4. Crop into 24x24 samples
-        samples = self.process_and_crop(images_raw, doy_raw, label_raster)
-
-        # 5. Save to disk
         metadata_records = []
-        for idx, sample in enumerate(samples[:num_samples_target]):
+        for idx, sample in enumerate(samples):
             sample_id = f"patch_{idx:05d}"
             if save_format == "pt":
                 file_path = os.path.join(output_dir, f"{sample_id}.pt")
@@ -118,7 +105,7 @@ class S2CropDatasetBuilder:
             metadata_records.append({
                 'sample_id': sample_id,
                 'file_name': os.path.basename(file_path),
-                'num_timesteps': num_timestamps,
+                'num_timesteps': T,
                 'patch_h': self.patch_size,
                 'patch_w': self.patch_size,
                 'num_bands': 10
@@ -130,6 +117,6 @@ class S2CropDatasetBuilder:
         return {
             'total_samples': len(metadata_records),
             'output_dir': output_dir,
-            'patch_shape': f"[{num_timestamps}, 10, {self.patch_size}, {self.patch_size}]",
+            'patch_shape': f"[{T}, 10, {self.patch_size}, {self.patch_size}]",
             'label_shape': f"[{self.patch_size}, {self.patch_size}]"
         }

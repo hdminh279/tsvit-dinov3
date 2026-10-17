@@ -8,7 +8,7 @@ PYTHON := $(VENV)/bin/python
 STREAMLIT := $(VENV)/bin/streamlit
 PIP := $(VENV)/bin/pip
 
-.PHONY: help venv install data test train export ui docker-build docker-run clean all
+.PHONY: help venv install test train export ui docker-build docker-run clean all
 
 help: ## Show this help message
 	@echo "=========================================================================="
@@ -33,11 +33,8 @@ install: venv ## Install project dependencies
 		$(PIP) install -r requirements.txt; \
 	fi
 
-data: ## Ingest and generate 24x24 time-series patches
-	@echo "[DATA] Generating preprocessed 24x24 Sentinel-2 and RPG patches..."
-	@PYTHONPATH=. $(PYTHON) -c "from src.data.dataset_builder import S2CropDatasetBuilder; b = S2CropDatasetBuilder(); res = b.build_synthetic_dataset(); print(res)"
-
 test: ## Run full unit test suite
+
 	@echo "[TEST] Running unit tests..."
 	@PYTHONPATH=. $(PYTHON) -m unittest discover -s tests -p "test_*.py"
 
@@ -68,4 +65,4 @@ clean: ## Clean cache, bytecode, and temporary test artifacts
 	@rm -rf .pytest_cache /tmp/test_s2_data_pipeline /tmp/test_tsvit_model
 	@echo "[CLEAN] Done."
 
-all: install data test train export ## Execute complete pipeline (install, data, test, train, export)
+all: install test train export ## Execute complete pipeline (install, test, train, export)

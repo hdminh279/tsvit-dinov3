@@ -58,9 +58,13 @@ class TestDataPipeline(unittest.TestCase):
         """Verify agricultural polygon rasterization to target grid."""
         processor = RPGProcessor()
         bounds = (2.0, 48.0, 2.1, 48.1)
-        parcels = processor.generate_synthetic_aoi_parcels(bounds, grid_rows=4, grid_cols=4)
-        
+        from shapely.geometry import box
+        parcels = [
+            (box(2.01, 48.01, 2.05, 48.05), '1'),
+            (box(2.06, 48.06, 2.09, 48.09), '2')
+        ]
         raster = processor.rasterize_parcels(parcels, bounds, (self.H, self.W))
+
         self.assertEqual(raster.shape, (self.H, self.W))
         self.assertTrue(np.all(raster >= 0))
         self.assertTrue(np.all(raster < NUM_CLASSES))
@@ -84,12 +88,15 @@ class TestDataPipeline(unittest.TestCase):
     def test_dataset_builder_and_dataloader(self):
         """Verify end-to-end dataset builder and PyTorch DataLoader."""
         builder = S2CropDatasetBuilder(patch_size=24)
-        result = builder.build_synthetic_dataset(
-            num_timestamps=10,
-            height=48,
-            width=48,
-            num_samples_target=4,
+        dummy_images = np.ones((10, 10, 48, 48), dtype=np.float32) * 1500.0
+        dummy_doy = np.linspace(10, 200, 10).astype(np.float32)
+        dummy_labels = np.ones((48, 48), dtype=np.int64) * 2
+        result = builder.build_dataset_from_arrays(
+            images_raw=dummy_images,
+            doy_raw=dummy_doy,
+            label_raster=dummy_labels,
             output_dir=self.test_dir,
+            num_samples_target=4,
             save_format="pt"
         )
         self.assertEqual(result['total_samples'], 4)

@@ -40,20 +40,15 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[Train] Initializing TSViT-DINOv3 on device: {device}")
 
-    # Ensure dataset exists; generate synthetic benchmark if empty
+    # Ensure dataset exists
     os.makedirs(args.data_dir, exist_ok=True)
     existing_files = glob.glob(os.path.join(args.data_dir, "*.pt")) + glob.glob(os.path.join(args.data_dir, "*.npz"))
     if not existing_files:
-        print("[Train] No dataset patches found. Generating synthetic Sentinel-2 benchmark patches...")
-        builder = S2CropDatasetBuilder(patch_size=24)
-        builder.build_synthetic_dataset(
-            num_timestamps=20,
-            height=144,
-            width=144,
-            num_samples_target=36,
-            output_dir=args.data_dir,
-            save_format="pt"
+        raise FileNotFoundError(
+            f"[Train] Không tìm thấy tệp dataset (.pt/.npz) nào trong thư mục '{args.data_dir}'. "
+            f"Vui lòng thực hiện bước thu thập dữ liệu (Cách 2 / Cách 3 / Cách 4) trước khi huấn luyện!"
         )
+
 
     train_loader, val_loader = get_dataloaders(args.data_dir, batch_size=args.batch_size, num_workers=2, val_split=0.2)
     print(f"[Train] Loaded {len(train_loader.dataset)} training samples, {len(val_loader.dataset)} validation samples.")
