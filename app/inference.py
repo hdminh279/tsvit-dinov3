@@ -44,30 +44,63 @@ class CropInferenceEngine:
                 if os.path.exists(c):
                     checkpoint_path = c
                     break
-        self.model = TSViT_DINOv3(
-            img_res=24,
-            patch_size=2,
-            in_channels=10,
-            num_classes=NUM_CLASSES,
-            dim=192,
-            temporal_depth=4,
-            spatial_depth=4,
-            heads=4,
-            dim_head=48
-        ).to(self.device)
+        dim = 192
+        dim_head = 48
+        state_dict = None
 
         if checkpoint_path and os.path.exists(checkpoint_path):
             try:
                 ckpt = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
                 state_dict = ckpt['model_state_dict'] if 'model_state_dict' in ckpt else ckpt
-                self.model.load_state_dict(state_dict, strict=False)
-                print(f"[Inference] Loaded model weights from: {checkpoint_path}")
+                if 'temporal_token' in state_dict:
+                    dim = state_dict['temporal_token'].shape[-1]
+                    dim_head = max(16, dim // 4)
+                print(f"[Inference] Loaded model checkpoint from: {checkpoint_path} (dim={dim})")
             except Exception as e:
-                print(f"[Inference] Warning loading checkpoint: {e}. Using initialized model weights.")
+                print(f"[Inference] Warning loading checkpoint: {e}. Using default dim=192.")
+
+        self.model = TSViT_DINOv3(
+            img_res=24,
+            patch_size=2,
+            in_channels=10,
+            num_classes=NUM_CLASSES,
+            dim=dim,
+            temporal_depth=4,
+            spatial_depth=4,
+            heads=4,
+            dim_head=dim_head
+        ).to(self.device)
+
+        if state_dict is not None:
+            self.model.load_state_dict(state_dict, strict=False)
 
         self.model.eval()
         self.normalizer = NormalizeS2()
         self.doy_normalizer = NormalizeDOY()
+
+    @staticmethod
+    def simulate_sits_from_image(img_pil) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Converts any user-provided RGB image/TIF into a 25-timestamp x 10-band SITS tensor [25, 10, 24, 24].
+        Allows users to upload standard PNG/JPG/TIF images and test the model.
+        """
+        img_resized = img_pil.convert("RGB").resize((24, 24))
+        rgb = np.array(img_resized, dtype=np.float32) / 255.0  # [24, 24, 3]
+        r = rgb[:, :, 0]
+        g = rgb[:, :, 1]
+        b = rgb[:, :, 2]
+        nir = np.clip(g * 1.5 + r * 0.5, 0.0, 1.0)
+        swir = np.clip(r * 1.2 + g * 0.2, 0.0, 1.0)
+        vre = np.clip((r + nir) / 2.0, 0.0, 1.0)
+
+        # 10 bands: B02(B), B03(G), B04(R), B05(VRE), B06(VRE), B07(VRE), B08(NIR), B8A(NIR), B11(SWIR), B12(SWIR)
+        bands_10 = np.stack([b, g, r, vre, vre, vre, nir, nir, swir, swir], axis=0) * 3000.0  # [10, 24, 24]
+
+        # Simulate 25 timestamps across growing season
+        t_factors = np.sin(np.linspace(0.2, np.pi - 0.2, 25)) * 0.4 + 0.8  # [25]
+        sits = np.stack([bands_10 * f for f in t_factors], axis=0)  # [25, 10, 24, 24]
+        doy = np.linspace(30, 300, 25).astype(np.float32)
+        return sits, doy
 
     def run_inference(
         self,
