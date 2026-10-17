@@ -4,10 +4,15 @@ Executes multi-temporal satellite segmentation and aggregates crop statistics an
 """
 
 from typing import Dict, List, Optional, Tuple, Union
+import sys
 import os
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from src.models.tsvit_dinov3 import TSViT_DINOv3
 from src.data.constants import (
@@ -27,6 +32,18 @@ class CropInferenceEngine:
         device: Optional[str] = None
     ):
         self.device = torch.device(device if device else ("cuda" if torch.cuda.is_available() else "cpu"))
+        
+        # Auto-detect checkpoint if not provided
+        if not checkpoint_path:
+            candidates = [
+                os.path.join(os.path.dirname(__file__), "best.pth"),
+                os.path.join(PROJECT_ROOT, "checkpoints", "best.pth"),
+                os.path.join(PROJECT_ROOT, "checkpoints", "best_model.pt")
+            ]
+            for c in candidates:
+                if os.path.exists(c):
+                    checkpoint_path = c
+                    break
         self.model = TSViT_DINOv3(
             img_res=24,
             patch_size=2,
