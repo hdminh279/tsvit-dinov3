@@ -7,6 +7,6 @@ venv/
 *.pt
 *.onnx
 *.npz
-data/
-checkpoints/
+/data/
+/checkpoints/
 .DS_Store
