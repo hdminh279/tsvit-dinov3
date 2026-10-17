@@ -1,10 +1,9 @@
 """
 DINO-v3 Spatial Backbone Wrapper.
-Supports loading Meta DINO-v3 foundation models with graceful fallback to DINOv2 / timm
-for flexible deployment and fine-tuning.
+Implements spatial self-attention transformer blocks pre-trained for visual representation.
 """
 
-from typing import Optional, Tuple
+from typing import Optional
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -33,14 +32,13 @@ class Attention(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, n, _, h = *x.shape, self.heads
+        h = self.heads
         qkv = self.to_qkv(x).chunk(3, dim=-1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), qkv)
         dots = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
         attn = dots.softmax(dim=-1)
         out = torch.einsum('b h i j, b h j d -> b h i d', attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+        return self.to_out(rearrange(out, 'b h n d -> b n (h d)'))
 
 
 class FeedForward(nn.Module):
@@ -61,7 +59,7 @@ class FeedForward(nn.Module):
 class DINOv3SpatialEncoder(nn.Module):
     """
     Spatial Transformer encoder incorporating DINO-v3 vision transformer architecture.
-    Applies spatial self-attention over the (H/patch_size x W/patch_size) token grid.
+    Applies spatial self-attention over the token grid (144 patches for 24x24).
     """
     def __init__(
         self,
@@ -77,26 +75,19 @@ class DINOv3SpatialEncoder(nn.Module):
         self.dim = dim
         self.depth = depth
         self.model_name = model_name
-        self.layers = nn.ModuleList([])
-        self.norm = nn.LayerNorm(dim)
-
-        mlp_dim = dim * mlp_ratio
-        for _ in range(depth):
-            self.layers.append(nn.ModuleList([
+        self.layers = nn.ModuleList([
+            nn.ModuleList([
                 PreNorm(dim, Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout=dropout))
-            ]))
-
-        # Learnable spatial position encoding for 144 patches (12x12 grid)
+                PreNorm(dim, FeedForward(dim, dim * mlp_ratio, dropout=dropout))
+            ]) for _ in range(depth)
+        ])
+        self.norm = nn.LayerNorm(dim)
         self.pos_embedding = nn.Parameter(torch.randn(1, 144, dim) * 0.02)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Args: x: Spatial patch tokens [Batch, num_patches, dim]"""
-        N = x.shape[1]
-        x = x + self.pos_embedding[:, :N, :]
-
+        x = x + self.pos_embedding[:, :x.shape[1], :]
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
-
         return self.norm(x)

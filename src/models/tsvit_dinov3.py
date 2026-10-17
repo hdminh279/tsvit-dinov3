@@ -50,8 +50,7 @@ class TSViT_DINOv3(nn.Module):
         self.spectral_adapter = SpectralAdapter(
             in_channels=in_channels,
             dim=dim,
-            patch_size=patch_size,
-            adapter_type="conv"
+            patch_size=patch_size
         )
 
         # 2. Temporal Transformer (from TSViT)

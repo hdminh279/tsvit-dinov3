@@ -32,7 +32,7 @@ class TestModelArchitecture(unittest.TestCase):
 
     def test_spectral_adapter(self):
         """Verify Spectral Adapter maps [B, T, 10, 24, 24] -> [B, T, 144, dim]."""
-        adapter = SpectralAdapter(in_channels=10, dim=self.dim, patch_size=2, adapter_type="conv")
+        adapter = SpectralAdapter(in_channels=10, dim=self.dim, patch_size=2)
         x = torch.randn(self.B, self.T, 10, self.H, self.W)
         tokens = adapter(x)
         self.assertEqual(tokens.shape, (self.B, self.T, 144, self.dim))
