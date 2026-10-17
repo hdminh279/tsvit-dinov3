@@ -78,8 +78,6 @@ class RPGProcessor:
         return raster
 
     @staticmethod
-
-    @staticmethod
     def load_parcels_from_file(
         file_path: str,
         bounds: Optional[Tuple[float, float, float, float]] = None,
@@ -118,12 +116,43 @@ class RPGProcessor:
                     continue
                 parcels.append((geom, code))
         else:
-            # Fallback to fiona or geopandas if installed for ESRI Shapefile / GeoPackage
             try:
                 import geopandas as gpd
-                gdf = gpd.read_file(file_path)
+                from pyproj import Transformer
+
+                # If path doesn't exist directly, search recursively in data/raw
+                if not os.path.exists(file_path):
+                    search_dir = os.path.dirname(file_path) if os.path.dirname(file_path) else "data/raw"
+                    if not os.path.exists(search_dir):
+                        search_dir = "data/raw"
+                    for root, _, files in os.walk(search_dir):
+                        for f in files:
+                            if f.endswith(".shp") and ("PARCELLES" in f or "RPG" in f):
+                                file_path = os.path.join(root, f)
+                                break
+                        if os.path.exists(file_path):
+                            break
+
+                # Spatial filter via native CRS bbox for fast sub-second loading
                 if bounds is not None:
-                    gdf = gdf.cx[bounds[0]:bounds[2], bounds[1]:bounds[3]]
+                    try:
+                        import pyogrio
+                        info = pyogrio.read_info(file_path)
+                        src_crs = info.get("crs")
+                        if src_crs and "4326" not in str(src_crs):
+                            transformer = Transformer.from_crs("EPSG:4326", src_crs, always_xy=True)
+                            sub_bbox = transformer.transform_bounds(*bounds)
+                        else:
+                            sub_bbox = bounds
+                        gdf = gpd.read_file(file_path, bbox=sub_bbox)
+                    except Exception:
+                        gdf = gpd.read_file(file_path)
+                else:
+                    gdf = gpd.read_file(file_path)
+
+                if gdf.crs and not gdf.crs.equals("EPSG:4326"):
+                    gdf = gdf.to_crs("EPSG:4326")
+
                 target_field = code_field if code_field in gdf.columns else ("CODE_CULTU" if "CODE_CULTU" in gdf.columns else gdf.columns[0])
                 for _, row in gdf.iterrows():
                     geom = row.geometry
@@ -133,7 +162,7 @@ class RPGProcessor:
                     parcels.append((geom, code))
             except ImportError:
                 raise ImportError(
-                    f"To load {ext} files, please install geopandas: `pip install geopandas` or convert to GeoJSON."
+                    f"To load {ext} files, please install geopandas: `pip install geopandas pyogrio pyproj`"
                 )
 
         return parcels

@@ -10,3 +10,7 @@ venv/
 /data/
 /checkpoints/
 .DS_Store
+*.log
+.ipynb_checkpoints/
+.pytest_cache/
+.env

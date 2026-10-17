@@ -96,13 +96,13 @@ def main():
     parser = argparse.ArgumentParser(description="Ingest Sentinel-2 L2A time-series from Microsoft Planetary Computer")
     parser.add_argument("--bbox", nargs=4, type=float, required=True,
                         help="Bounding box: min_lon min_lat max_lon max_lat (e.g. 1.95 47.95 2.05 48.05)")
-    parser.add_argument("--start_date", type=str, default="2019-01-01",
-                        help="Start acquisition date YYYY-MM-DD")
-    parser.add_argument("--end_date", type=str, default="2019-12-01",
-                        help="End acquisition date YYYY-MM-DD")
+    parser.add_argument("--start_date", type=str, default="2022-01-01",
+                        help="Start acquisition date YYYY-MM-DD (default: 2022-01-01)")
+    parser.add_argument("--end_date", type=str, default="2022-12-01",
+                        help="End acquisition date YYYY-MM-DD (default: 2022-12-01)")
     parser.add_argument("--cloud_cover_max", type=float, default=20.0,
                         help="Maximum cloudy pixel percentage (default: 20)")
-    parser.add_argument("--output_dir", type=str, default="data/raw/planetary",
+    parser.add_argument("--output_dir", type=str, default="data/raw/planetary_2022",
                         help="Directory to save metadata and time-series records")
 
     args = parser.parse_args()
