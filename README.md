@@ -38,8 +38,8 @@ crop_classification_tsvit_dinov3/
 │   ├── data/
 │   │   ├── constants.py          # 10 bands S2, μ/σ PASTIS24, bảng nhãn RPG 2022
 │   │   ├── transforms.py         # Lọc mây SCL, chuẩn hóa, cắt patch 24x24
-│   │   ├── ingest_gee.py         # Thu thập ảnh Sentinel-2 qua Google Earth Engine
 │   │   ├── ingest_planetary.py   # Thu thập ảnh qua Microsoft Planetary Computer
+
 │   │   ├── rpg_processor.py      # Đọc polygon RPG 2022 & Rasterize nhãn [H, W]
 │   │   ├── dataset_builder.py    # Điều phối tạo dataset hoàn chỉnh (.pt / .npz)
 │   │   ├── dataloader.py         # PyTorch Dataset & DataLoader
@@ -68,47 +68,21 @@ crop_classification_tsvit_dinov3/
 
 Bạn có thể chọn 1 trong 4 cách lấy dữ liệu tùy theo nhu cầu:
 
-### Cách 1: Chạy Offline Sandbox (Không cần tài khoản/API - Nhanh nhất để test)
-Lệnh này sinh 36 samples `.pt` chuẩn hóa theo đúng phân phối PASTIS24 để kiểm thử toàn diện code:
+### Bước 1: Kéo dữ liệu vệ tinh thật qua Microsoft Planetary Computer (Miễn phí 100%, không cần tài khoản)
+API công khai từ Microsoft Planetary Computer cho phép tải Sentinel-2 L2A qua STAC API đúng năm 2022:
 ```bash
-make data
-```
-Dữ liệu sinh ra tại: `data/processed/patches/` kèm file `metadata.csv`.
-
----
-
-### Cách 2: Kéo dữ liệu vệ tinh thật qua Microsoft Planetary Computer (Miễn phí 100%, không cần thẻ)
-API công khai từ Microsoft Planetary Computer cho phép tải Sentinel-2 L2A qua STAC API:
-```bash
-# Cú pháp: python -m src.data.ingest_planetary --bbox <min_lon> <min_lat> <max_lon> <max_lat> --start_date <YYYY-MM-DD> --end_date <YYYY-MM-DD>
 .venv/bin/python -m src.data.ingest_planetary \
-  --bbox 1.95 47.95 2.05 48.05 \
-  --start_date 2019-01-01 \
-  --end_date 2019-12-01 \
+  --bbox 1.50 48.00 2.15 48.45 \
+  --start_date 2022-01-01 \
+  --end_date 2022-12-01 \
   --cloud_cover_max 20 \
-  --output_dir data/raw/planetary
+  --output_dir data/raw/planetary_2022
 ```
 
 ---
 
-### Cách 3: Kéo dữ liệu qua Google Earth Engine (GEE)
-1. **Xác thực tài khoản Google Earth Engine (chỉ làm 1 lần):**
-   ```bash
-   .venv/bin/python -c "import ee; ee.Authenticate()"
-   ```
-2. **Chạy module thu thập Sentinel-2 L2A:**
-   ```bash
-   .venv/bin/python -m src.data.ingest_gee \
-     --aoi 1.95 47.95 2.05 48.05 \
-     --start_date 2019-01-01 \
-     --end_date 2019-12-01 \
-     --cloud_cover_max 20 \
-     --output data/raw/s2_cube.tif
-   ```
+### Bước 2: Tải Ground Truth RPG-2022 và Cắt Patch Đồng Bộ $24 \times 24$ (40,532 files)
 
----
-
-### Cách 4: Tải Ground Truth RPG-2022 và Cắt Patch Đồng Bộ $24 \times 24$
 1. **Tải dữ liệu vector RPG-2022 (Shapefile `.shp` hoặc `.gpkg`):**
    - Tải từ cổng dữ liệu mở Pháp: [data.gouv.fr (RPG 2022)](https://www.data.gouv.fr/fr/datasets/registre-parcellaire-graphique-rpg-contours-des-parcelles-et-ilots-culturaux-et-leur-groupe-de-cultures-majoritaire-de-2015-a-2022/) hoặc [IGN Geoservices](https://geoservices.ign.fr/rpg).
    - Đặt file vào thư mục: `data/raw/rpg_2022/`.
