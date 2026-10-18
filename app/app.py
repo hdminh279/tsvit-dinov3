@@ -27,10 +27,10 @@ for p in [PROJECT_ROOT, APP_DIR]:
 import torch
 
 try:
-    from app.inference import CropInferenceEngine
+    from app.inference import CropInferenceEngine, CLASS_ID_TO_RGB, CLASS_ID_TO_HEX, CLASS_COLORS
     from app.planetary import fetch_planetary_sentinel2
 except Exception:
-    from inference import CropInferenceEngine
+    from inference import CropInferenceEngine, CLASS_ID_TO_RGB, CLASS_ID_TO_HEX, CLASS_COLORS
     from planetary import fetch_planetary_sentinel2
 
 from src.data.constants import CROP_CLASSES_VI
@@ -127,51 +127,6 @@ def get_inference_engine():
 
 engine = get_inference_engine()
 
-# Color mapping for crops
-CROP_COLOR_MAP = {
-    'Xoài': '#00C882',
-    'Lúa': '#F5B041',
-    'Lúa mì': '#F5B041',
-    'Lúa mì mùa đông': '#F5B041',
-    'Ngô': '#E67E22',
-    'Cam': '#8000FF',
-    'Táo': '#E53E3E',
-    'Cải dầu': '#27AE60',
-    'Cải dầu vụ đông': '#27AE60',
-    'Đồng cỏ': '#2ECC71',
-    'Cây ăn quả': '#9B59B6',
-    'Khác': '#8000FF',
-    'Đất trống': '#7F8C8D'
-}
-
-def get_color_for_name(name: str) -> str:
-    for k, c in CROP_COLOR_MAP.items():
-        if k.lower() in name.lower():
-            return c
-    return '#3498DB'
-
-CLASS_ID_TO_RGB = {
-    0: (127, 140, 141),
-    1: (46, 204, 113),
-    2: (245, 176, 65),
-    3: (230, 126, 34),
-    4: (214, 137, 16),
-    5: (39, 174, 96),
-    6: (243, 156, 18),
-    7: (241, 196, 15),
-    8: (26, 188, 156),
-    9: (46, 134, 193),
-    10: (52, 152, 219),
-    11: (41, 128, 185),
-    12: (155, 89, 182),
-    13: (142, 68, 173),
-    14: (231, 76, 60),
-    15: (189, 195, 199),
-    16: (160, 64, 0),
-    17: (192, 57, 43),
-    18: (128, 0, 255)
-}
-
 def create_crop_overlay(
     img_pil: Image.Image,
     pred_map: Optional[np.ndarray],
@@ -186,7 +141,8 @@ def create_crop_overlay(
     rgb_mask = np.zeros((24, 24, 3), dtype=np.uint8)
     for r in range(24):
         for c in range(24):
-            rgb_mask[r, c] = CLASS_ID_TO_RGB.get(int(pred_map[r, c]), (52, 152, 219))
+            cls_id = int(pred_map[r, c])
+            rgb_mask[r, c] = CLASS_ID_TO_RGB.get(cls_id, (52, 152, 219))
 
     mask_pil = Image.fromarray(rgb_mask).resize((W, H), Image.Resampling.NEAREST)
 
@@ -202,10 +158,10 @@ def create_crop_overlay(
     # Place text pill tags for dominant crops
     if crop_stats:
         placed_boxes = []
-        for crop in crop_stats[:3]:
+        for crop in crop_stats[:4]:
             cls_id = crop["class_id"]
             pct = crop["percentage"]
-            if pct < 5.0:
+            if pct < 3.0 or cls_id == 0:
                 continue
             ys, xs = np.where(pred_map == cls_id)
             if len(xs) == 0:
@@ -234,6 +190,7 @@ def create_crop_overlay(
             draw.text((x1 + 10, y1 + 4), label_text, fill=(255, 255, 255))
 
     return blended.convert("RGB")
+
 
 # Predefined Real Samples
 SAMPLE_PRESETS = {
@@ -305,6 +262,8 @@ if 'active_planetary_loc' not in st.session_state:
     st.session_state.active_planetary_loc = None
 if 'active_preset_choice' not in st.session_state:
     st.session_state.active_preset_choice = None
+if 'active_input_mode' not in st.session_state:
+    st.session_state.active_input_mode = None
 
 # Top Header
 st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh vệ tinh</div>', unsafe_allow_html=True)
@@ -321,6 +280,10 @@ with st.container(border=True):
         index=0,
         key="input_mode_selector"
     )
+
+    mode_changed = (st.session_state.active_input_mode != input_mode)
+    if mode_changed:
+        st.session_state.active_input_mode = input_mode
 
     if input_mode == "Ảnh vệ tinh trực tiếp Sentinel-2":
         loc_choice = st.selectbox(
@@ -352,6 +315,7 @@ with st.container(border=True):
 
         should_fetch_planetary = (
             btn_fetch_planetary
+            or (mode_changed and loc_choice != "Tự nhập tọa độ")
             or (loc_choice != "Tự nhập tọa độ" and st.session_state.active_planetary_loc != loc_choice)
             or (st.session_state.current_display_img is None)
         )
@@ -450,7 +414,8 @@ with st.container(border=True):
         )
 
         should_load_preset = (
-            st.session_state.active_preset_choice != preset_choice
+            mode_changed
+            or st.session_state.active_preset_choice != preset_choice
             or btn_run_preset
             or st.session_state.analysis_results is None
         )
@@ -540,11 +505,13 @@ with col_right:
         # Retrieve results
         if st.session_state.analysis_results is not None:
             res = st.session_state.analysis_results
-            stats = res['crop_stats'][:4]
-            labels = [c['name_vi'].replace('(', '').replace(')', '').strip() for c in stats]
-            values = [c['percentage'] for c in stats]
-            confs = [c['confidence'] for c in stats]
-            colors = [get_color_for_name(l) for l in labels]
+            stats = res['crop_stats']
+            non_zero_stats = [s for s in stats if s['percentage'] > 0.0]
+            display_stats = non_zero_stats[:4] if non_zero_stats else stats[:4]
+            labels = [c['name_vi'].replace('(', '').replace(')', '').strip() for c in display_stats]
+            values = [c['percentage'] for c in display_stats]
+            confs = [c['confidence'] for c in display_stats]
+            colors = [c.get('color', CLASS_ID_TO_HEX.get(c['class_id'], '#3498DB')) for c in display_stats]
         else:
             labels = ['Lúa mì', 'Ngô', 'Cải dầu', 'Đồng cỏ']
             values = [57, 39, 4, 0]
