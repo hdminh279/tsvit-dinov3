@@ -8,12 +8,13 @@ Streamlit Web Application for Sentinel-2 Crop Classification & Segmentation:
 
 import sys
 import os
+from typing import Optional, List, Dict, Tuple
 import datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from PIL import Image
+from PIL import Image, ImageDraw
 
 # Ensure project root & app directory in sys.path
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -148,6 +149,91 @@ def get_color_for_name(name: str) -> str:
         if k.lower() in name.lower():
             return c
     return '#3498DB'
+
+CLASS_ID_TO_RGB = {
+    0: (127, 140, 141),
+    1: (46, 204, 113),
+    2: (245, 176, 65),
+    3: (230, 126, 34),
+    4: (214, 137, 16),
+    5: (39, 174, 96),
+    6: (243, 156, 18),
+    7: (241, 196, 15),
+    8: (26, 188, 156),
+    9: (46, 134, 193),
+    10: (52, 152, 219),
+    11: (41, 128, 185),
+    12: (155, 89, 182),
+    13: (142, 68, 173),
+    14: (231, 76, 60),
+    15: (189, 195, 199),
+    16: (160, 64, 0),
+    17: (192, 57, 43),
+    18: (128, 0, 255)
+}
+
+def create_crop_overlay(
+    img_pil: Image.Image,
+    pred_map: Optional[np.ndarray],
+    crop_stats: Optional[list],
+    mode: str = "overlay"
+) -> Image.Image:
+    """Overlays colored semantic segmentation mask and crop name pill tags onto satellite image."""
+    if pred_map is None or img_pil is None:
+        return img_pil
+
+    W, H = img_pil.size
+    rgb_mask = np.zeros((24, 24, 3), dtype=np.uint8)
+    for r in range(24):
+        for c in range(24):
+            rgb_mask[r, c] = CLASS_ID_TO_RGB.get(int(pred_map[r, c]), (52, 152, 219))
+
+    mask_pil = Image.fromarray(rgb_mask).resize((W, H), Image.Resampling.NEAREST)
+
+    if mode == "mask":
+        return mask_pil
+    elif mode == "raw":
+        return img_pil
+
+    # Semi-transparent blending (45% alpha)
+    blended = Image.blend(img_pil.convert("RGBA"), mask_pil.convert("RGBA"), alpha=0.45).convert("RGBA")
+    draw = ImageDraw.Draw(blended)
+
+    # Place text pill tags for dominant crops
+    if crop_stats:
+        placed_boxes = []
+        for crop in crop_stats[:3]:
+            cls_id = crop["class_id"]
+            pct = crop["percentage"]
+            if pct < 5.0:
+                continue
+            ys, xs = np.where(pred_map == cls_id)
+            if len(xs) == 0:
+                continue
+            cx = int(np.mean(xs) / 24.0 * W)
+            cy = int(np.mean(ys) / 24.0 * H)
+
+            name = crop["name_vi"].replace("(", "").replace(")", "").strip()
+            label_text = f"{name} {pct:.0f}%"
+
+            tw = len(label_text) * 8 + 18
+            th = 22
+            x1 = max(10, min(W - tw - 10, cx - tw // 2))
+            y1 = max(10, min(H - th - 10, cy - th // 2))
+
+            for bx1, by1, bx2, by2 in placed_boxes:
+                if abs(x1 - bx1) < tw and abs(y1 - by1) < th:
+                    y1 = min(H - th - 10, by2 + 6)
+
+            placed_boxes.append((x1, y1, x1 + tw, y1 + th))
+            col_rgb = CLASS_ID_TO_RGB.get(cls_id, (52, 152, 219))
+
+            # Rounded pill badge with crop color accent
+            draw.rounded_rectangle([x1, y1, x1 + tw, y1 + th], radius=4, fill=(23, 37, 61, 220))
+            draw.rectangle([x1, y1 + 3, x1 + 4, y1 + th - 3], fill=col_rgb)
+            draw.text((x1 + 10, y1 + 4), label_text, fill=(255, 255, 255))
+
+    return blended.convert("RGB")
 
 # Predefined Real Samples
 SAMPLE_PRESETS = {
@@ -395,8 +481,33 @@ col_left, col_right = st.columns([1.2, 0.85], gap="small")
 # --- LEFT CARD: SATELLITE PARCEL MAP ---
 with col_left:
     with st.container(border=True):
+        v_col1, v_col2 = st.columns([1.6, 2.4])
+        with v_col1:
+            st.markdown('<div style="font-size: 13.5px; font-weight: 600; color: #1E293B; padding-top: 6px;">Hiển thị ảnh vệ tinh</div>', unsafe_allow_html=True)
+        with v_col2:
+            view_mode = st.selectbox(
+                "Chế độ hiển thị",
+                ["Dán đè nhãn lên ảnh", "Ảnh vệ tinh gốc", "Bản đồ nhãn màu"],
+                index=0,
+                label_visibility="collapsed",
+                key="display_view_mode"
+            )
+
+        mode_key = "overlay"
+        if view_mode == "Ảnh vệ tinh gốc":
+            mode_key = "raw"
+        elif view_mode == "Bản đồ nhãn màu":
+            mode_key = "mask"
+
         if st.session_state.current_display_img is not None:
-            display_to_show = st.session_state.current_display_img
+            pred_map = st.session_state.analysis_results.get('prediction_map') if st.session_state.analysis_results else None
+            crop_stats = st.session_state.analysis_results.get('crop_stats') if st.session_state.analysis_results else None
+            display_to_show = create_crop_overlay(
+                st.session_state.current_display_img,
+                pred_map,
+                crop_stats,
+                mode=mode_key
+            )
         else:
             display_to_show = Image.new("RGB", (540, 320), "#234E24")
 
