@@ -29,8 +29,9 @@ class RPGProcessor:
     def rasterize_parcels(
         self,
         shapes_and_codes: List[Tuple[Union[Polygon, MultiPolygon], Union[str, int]]],
-        bounds: Tuple[float, float, float, float],  # (min_lon, min_lat, max_lon, max_lat)
-        out_shape: Tuple[int, int],  # (H, W)
+        bounds: Optional[Tuple[float, float, float, float]] = None,
+        out_shape: Tuple[int, int] = (24, 24),
+        transform: Optional[rasterio.Affine] = None,
         fill: int = 0
     ) -> np.ndarray:
         """
@@ -38,31 +39,41 @@ class RPGProcessor:
         
         Args:
             shapes_and_codes: List of tuples (polygon_geometry, crop_code)
-            bounds: Bounding coordinates (minx, miny, maxx, maxy)
+            bounds: Bounding coordinates (minx, miny, maxx, maxy) in target metric units
             out_shape: (H, W) target raster dimensions
+            transform: Optional exact Affine transform (e.g. from Sentinel-2 COG header)
             fill: Background label value (default 0)
         Returns:
             2D numpy array [H, W] of crop class integer labels
         """
         H, W = out_shape
-        minx, miny, maxx, maxy = bounds
-        transform = from_bounds(minx, miny, maxx, maxy, W, H)
+        if transform is None:
+            if bounds is None:
+                raise ValueError("Must provide either 'transform' or 'bounds' for rasterization.")
+            minx, miny, maxx, maxy = bounds
+            transform = from_bounds(minx, miny, maxx, maxy, W, H)
 
         # Prepare geometries with mapped integer values
         shapes_to_rasterize = []
-        aoi_box = box(minx, miny, maxx, maxy)
+        aoi_box = box(*bounds) if bounds is not None else None
 
         for geom, code in shapes_and_codes:
+            if geom is None or geom.is_empty:
+                continue
             if not geom.is_valid:
                 geom = geom.buffer(0)
-            if not geom.intersects(aoi_box):
-                continue
-            clipped_geom = clip_by_rect(geom, minx, miny, maxx, maxy)
-            if clipped_geom.is_empty:
+            if aoi_box is not None:
+                if not geom.intersects(aoi_box):
+                    continue
+                try:
+                    geom = clip_by_rect(geom, *bounds)
+                except Exception:
+                    pass
+            if geom.is_empty:
                 continue
 
             mapped_class = self.map_crop_code(code)
-            shapes_to_rasterize.append((clipped_geom, mapped_class))
+            shapes_to_rasterize.append((geom, mapped_class))
 
         if not shapes_to_rasterize:
             return np.full(out_shape, fill, dtype=np.int64)
@@ -81,6 +92,7 @@ class RPGProcessor:
     def load_parcels_from_file(
         file_path: str,
         bounds: Optional[Tuple[float, float, float, float]] = None,
+        target_crs: str = "EPSG:32631",
         code_field: str = "CODE_GROUP"
     ) -> List[Tuple[Union[Polygon, MultiPolygon], str]]:
         """
@@ -150,8 +162,8 @@ class RPGProcessor:
                 else:
                     gdf = gpd.read_file(file_path)
 
-                if gdf.crs and not gdf.crs.equals("EPSG:4326"):
-                    gdf = gdf.to_crs("EPSG:4326")
+                if target_crs and gdf.crs and not gdf.crs.equals(target_crs):
+                    gdf = gdf.to_crs(target_crs)
 
                 target_field = code_field if code_field in gdf.columns else ("CODE_CULTU" if "CODE_CULTU" in gdf.columns else gdf.columns[0])
                 for _, row in gdf.iterrows():

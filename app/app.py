@@ -151,6 +151,24 @@ st.markdown("""
     .st-key-controls_card [data-baseweb="base-input"],
     .st-key-controls_card div[data-testid="stDateInputField"] { min-height: 32px !important; height: 32px !important; }
     .st-key-controls_card input { height: 32px !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+    /* Darker, clearer border around each input box */
+    .st-key-controls_card [data-baseweb="input"] {
+        border: 1.5px solid #64748B !important;
+        border-radius: 8px !important;
+        background: #FFFFFF !important;
+    }
+    .st-key-controls_card [data-baseweb="base-input"] { border: none !important; background: transparent !important; }
+    .st-key-controls_card [data-baseweb="input"]:focus-within {
+        border-color: #1D4ED8 !important;
+        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.15) !important;
+    }
+    /* Bolder, darker numbers in the input boxes for readability */
+    .st-key-controls_card input {
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        color: #0F172A !important;
+        -webkit-text-fill-color: #0F172A !important;
+    }
     .st-key-controls_card [data-testid="stNumberInput"] button { height: 32px !important; }
     .st-key-controls_card div[data-testid="stVerticalBlock"],
     .st-key-controls_card div[data-testid="stElementContainer"] { gap: 0.1rem !important; }

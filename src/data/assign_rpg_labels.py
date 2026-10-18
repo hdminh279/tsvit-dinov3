@@ -83,11 +83,15 @@ def assign_labels(
     print(f"[Labeler] Target AOI dimensions: {win_w} x {win_h} pixels")
     print(f"[Labeler] Loading agricultural parcels from: {rpg_vector_file}...")
     processor = RPGProcessor()
-    parcels = RPGProcessor.load_parcels_from_file(rpg_vector_file, bounds=bbox)
+    parcels = RPGProcessor.load_parcels_from_file(rpg_vector_file, bounds=bbox, target_crs="EPSG:32631")
     print(f"[Labeler] Extracted {len(parcels)} parcel polygons inside AOI.")
 
-    print(f"[Labeler] Rasterizing parcels to 10m spatial grid ({win_h} x {win_w})...")
-    label_raster = processor.rasterize_parcels(parcels, bounds=bbox, out_shape=(win_h, win_w))
+    # Exact Sentinel-2 UTM Affine Transform: Tile 31UDP AOI origin at (399960.0, 5377640.0)
+    from rasterio.transform import from_origin
+    utm_transform = from_origin(399960.0, 5377640.0, 10.0, 10.0)
+
+    print(f"[Labeler] Rasterizing parcels to 10m spatial grid ({win_h} x {win_w}) in EPSG:32631...")
+    label_raster = processor.rasterize_parcels(parcels, out_shape=(win_h, win_w), transform=utm_transform)
 
     # Calculate class distribution
     unique, counts = np.unique(label_raster, return_counts=True)

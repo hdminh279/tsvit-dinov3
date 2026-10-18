@@ -132,12 +132,13 @@ def process_and_export_patches(
 
     print(f"[Extractor] AOI Grid: {win_w} x {win_h} pixels ({win_w * 0.01:.1f} km x {win_h * 0.01:.1f} km)")
 
-    # Prepare ground truth raster
+    # Prepare ground truth raster with exact metric alignment
     rpg_processor = RPGProcessor()
     if rpg_vector_file and os.path.exists(rpg_vector_file):
-        print(f"[Extractor] Rasterizing RPG 2022 labels from: {rpg_vector_file}")
-        parcels = RPGProcessor.load_parcels_from_file(rpg_vector_file, bounds=bbox)
-        label_raster = rpg_processor.rasterize_parcels(parcels, bbox, (win_h, win_w))
+        print(f"[Extractor] Rasterizing RPG 2022 labels from: {rpg_vector_file} into UTM grid...")
+        win_transform = rasterio.windows.transform(win, ref_transform)
+        parcels = RPGProcessor.load_parcels_from_file(rpg_vector_file, bounds=bbox, target_crs="EPSG:32631")
+        label_raster = rpg_processor.rasterize_parcels(parcels, out_shape=(win_h, win_w), transform=win_transform)
     else:
         print("[Extractor] Notice: No RPG file provided. Defaulting to background class (0).")
         label_raster = np.zeros((win_h, win_w), dtype=np.int64)
