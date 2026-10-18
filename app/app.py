@@ -155,28 +155,25 @@ def create_crop_overlay(
 
 
 
-# Predefined Real Samples
+# Predefined Real Samples (Major Agricultural Regions in France)
 LOCATION_PRESETS = {
     "Cánh đồng ngô Loiret": {
-        "lat": 48.2140, "lon": 1.9210, "radius": 1150, "date": datetime.date(2022, 7, 20)
+        "lat": 47.9250, "lat_dir": "Bắc (°N)", "lon": 2.1450, "lon_dir": "Đông (°E)", "radius": 1150, "date": datetime.date(2022, 7, 20)
     },
     "Cánh đồng lúa mì Beauce": {
-        "lat": 48.1250, "lon": 1.8540, "radius": 1200, "date": datetime.date(2022, 6, 15)
+        "lat": 48.1250, "lat_dir": "Bắc (°N)", "lon": 1.8540, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 6, 15)
     },
     "Cánh đồng cải dầu Eure": {
-        "lat": 48.0920, "lon": 1.7850, "radius": 1100, "date": datetime.date(2022, 5, 10)
+        "lat": 49.0250, "lat_dir": "Bắc (°N)", "lon": 1.1520, "lon_dir": "Đông (°E)", "radius": 1100, "date": datetime.date(2022, 5, 10)
     },
     "Cánh đồng hướng dương Gers": {
-        "lat": 43.6460, "lon": 0.5850, "radius": 1200, "date": datetime.date(2022, 7, 15)
-    },
-    "Vùng ngũ cốc Champagne": {
-        "lat": 48.9560, "lon": 4.3640, "radius": 1200, "date": datetime.date(2022, 6, 15)
+        "lat": 43.6850, "lat_dir": "Bắc (°N)", "lon": 0.5920, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 15)
     },
     "Vườn nho Bordeaux": {
-        "lat": 44.8378, "lon": -0.5792, "radius": 1200, "date": datetime.date(2022, 6, 20)
+        "lat": 44.8378, "lat_dir": "Bắc (°N)", "lon": 0.5792, "lon_dir": "Tây (°W)", "radius": 1200, "date": datetime.date(2022, 6, 20)
     },
     "Tự nhập tọa độ": {
-        "lat": 48.2140, "lon": 1.9210, "radius": 1150, "date": datetime.date(2022, 7, 20)
+        "lat": 44.8378, "lat_dir": "Bắc (°N)", "lon": 0.5792, "lon_dir": "Tây (°W)", "radius": 1200, "date": datetime.date(2022, 6, 20)
     }
 }
 
@@ -221,22 +218,32 @@ with st.container(border=True):
 
         preset_data = LOCATION_PRESETS[loc_choice]
 
-        c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.4, 1.8, 1.8])
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([1.3, 1.1, 1.3, 1.1, 1.1, 1.5, 1.6])
         with c1:
-            lat_in = st.number_input("Vĩ độ", value=float(preset_data["lat"]), format="%.4f", min_value=-90.0, max_value=90.0, step=0.001, key=f"in_lat_{loc_choice}")
+            lat_val = st.number_input("Vĩ độ", value=float(preset_data["lat"]), format="%.4f", min_value=0.0, max_value=90.0, step=0.001, key=f"in_lat_val_{loc_choice}")
         with c2:
-            lon_in = st.number_input("Kinh độ", value=float(preset_data["lon"]), format="%.4f", min_value=-180.0, max_value=180.0, step=0.001, key=f"in_lon_{loc_choice}")
+            lat_dir_idx = 0 if preset_data["lat_dir"] == "Bắc (°N)" else 1
+            lat_dir = st.selectbox("Hướng vĩ", ["Bắc (°N)", "Nam (°S)"], index=lat_dir_idx, key=f"in_lat_dir_{loc_choice}")
         with c3:
-            radius_in = st.number_input("Bán kính mét", value=int(preset_data["radius"]), min_value=300, max_value=5000, step=100, key=f"in_rad_{loc_choice}")
+            lon_val = st.number_input("Kinh độ", value=float(preset_data["lon"]), format="%.4f", min_value=0.0, max_value=180.0, step=0.001, key=f"in_lon_val_{loc_choice}")
         with c4:
-            date_in = st.date_input("Thời gian quan sát", value=preset_data["date"], format="DD/MM/YYYY", key=f"in_date_{loc_choice}")
+            lon_dir_idx = 0 if preset_data["lon_dir"] == "Đông (°E)" else 1
+            lon_dir = st.selectbox("Hướng kinh", ["Đông (°E)", "Tây (°W)"], index=lon_dir_idx, key=f"in_lon_dir_{loc_choice}")
         with c5:
+            radius_in = st.number_input("Bán kính mét", value=int(preset_data["radius"]), min_value=300, max_value=5000, step=100, key=f"in_rad_{loc_choice}")
+        with c6:
+            date_in = st.date_input("Thời gian quan sát", value=preset_data["date"], format="DD/MM/YYYY", key=f"in_date_{loc_choice}")
+        with c7:
             st.write("")
             st.write("")
             btn_fetch_planetary = st.button("Lấy ảnh và phân tích", type="primary", use_container_width=True, key="btn_planetary_fetch")
 
+        # Convert compass directions to signed WGS-84 coordinates for Microsoft Planetary Computer
+        lat_in = lat_val if lat_dir == "Bắc (°N)" else -lat_val
+        lon_in = lon_val if lon_dir == "Đông (°E)" else -lon_val
+
         st.markdown(
-            f'<div class="input-caption">Tọa độ {lat_in:.4f}, {lon_in:.4f} · Bán kính {radius_in} mét · Ngày {date_in.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer</div>',
+            f'<div class="input-caption">Tọa độ: {lat_val:.4f}° {lat_dir.split()[0]} ({lat_dir.split()[1]}), {lon_val:.4f}° {lon_dir.split()[0]} ({lon_dir.split()[1]}) · WGS-84: ({lat_in:.4f}, {lon_in:.4f}) · Bán kính {radius_in} mét · Ngày {date_in.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer</div>',
             unsafe_allow_html=True
         )
 
@@ -254,7 +261,6 @@ with st.container(border=True):
             or has_gray_mask
         )
 
-
         if should_fetch_planetary:
             with st.spinner("Đang kết nối Microsoft Planetary Computer và tải ảnh Sentinel-2..."):
                 try:
@@ -270,7 +276,13 @@ with st.container(border=True):
                     st.session_state.current_doy = p_doy
                     st.session_state.current_label = None
                     st.session_state.patch_name = f"Sentinel-2 ngày {p_meta['acquisition_date']} phủ mây {p_meta['cloud_cover']}%"
-                    st.session_state.analysis_results = engine.run_inference(p_sits, p_doy)
+                    st.session_state.analysis_results = engine.run_inference(
+                        p_sits,
+                        p_doy,
+                        lat=lat_in,
+                        lon=lon_in,
+                        context_name=loc_choice
+                    )
                     st.session_state.active_planetary_loc = loc_choice
                     if btn_fetch_planetary:
                         st.success(f"Đã tải thành công ảnh Sentinel-2 ngày {p_meta['acquisition_date']} với độ phủ mây {p_meta['cloud_cover']}%")
@@ -326,7 +338,7 @@ with st.container(border=True):
                     st.session_state.current_label = None
                     st.session_state.current_display_img = disp_pil.resize((540, 320), Image.Resampling.NEAREST)
                     st.session_state.patch_name = up_file.name
-                    st.session_state.analysis_results = engine.run_inference(sits, doy)
+                    st.session_state.analysis_results = engine.run_inference(sits, doy, context_name=up_file.name)
 
 # 2. Main Content Columns
 col_left, col_right = st.columns([1.2, 0.85], gap="small")
