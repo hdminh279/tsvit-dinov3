@@ -18,3 +18,5 @@ onnx>=1.14.0
 itsdangerous>=2.1.0
 pystac-client>=0.7.0
 planetary-computer>=0.5.0
+folium>=0.15.0
+streamlit-folium>=0.15.0
