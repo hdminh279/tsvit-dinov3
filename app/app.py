@@ -167,8 +167,7 @@ with st.container(border=True):
             format="%.4f",
             min_value=-90.0,
             max_value=90.0,
-            step=0.001,
-            key="in_lat"
+            step=0.001
         )
     with c2:
         lon_in = st.number_input(
@@ -177,8 +176,7 @@ with st.container(border=True):
             format="%.4f",
             min_value=-180.0,
             max_value=180.0,
-            step=0.001,
-            key="in_lon"
+            step=0.001
         )
     with c3:
         radius_in = st.number_input(
@@ -186,15 +184,13 @@ with st.container(border=True):
             value=int(st.session_state.radius),
             min_value=300,
             max_value=5000,
-            step=100,
-            key="in_rad"
+            step=100
         )
     with c4:
         date_in = st.date_input(
             "Thời gian quan sát",
             value=st.session_state.target_date,
-            format="DD/MM/YYYY",
-            key="in_date"
+            format="DD/MM/YYYY"
         )
     with c5:
         st.write("")
@@ -202,13 +198,14 @@ with st.container(border=True):
         btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis")
 
     # Sync state from inputs
-    st.session_state.lat = lat_in
-    st.session_state.lon = lon_in
+    if abs(lat_in - st.session_state.lat) > 1e-4 or abs(lon_in - st.session_state.lon) > 1e-4:
+        st.session_state.lat = lat_in
+        st.session_state.lon = lon_in
     st.session_state.radius = radius_in
     st.session_state.target_date = date_in
 
     st.markdown(
-        f'<div class="input-caption">Tọa độ: {lat_in:.4f}, {lon_in:.4f} · Bán kính: {radius_in}m · Ngày: {date_in.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer & Bản đồ vệ tinh</div>',
+        f'<div class="input-caption">Tọa độ: {st.session_state.lat:.4f}, {st.session_state.lon:.4f} · Bán kính: {st.session_state.radius}m · Ngày: {st.session_state.target_date.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer & Bản đồ vệ tinh</div>',
         unsafe_allow_html=True
     )
 
@@ -220,8 +217,10 @@ curr_bounds = [
     [st.session_state.lat + dlat, st.session_state.lon + dlon]
 ]
 
-# Run analysis when requested or on cold start
-should_analyze = btn_analyze or (st.session_state.analysis_results is None)
+# Run analysis when requested, position clicked, or on cold start
+trigger_from_click = st.session_state.get('trigger_analyze', False)
+st.session_state.trigger_analyze = False
+should_analyze = btn_analyze or trigger_from_click or (st.session_state.analysis_results is None)
 if should_analyze:
     with st.spinner("Đang kết nối Microsoft Planetary Computer và phân tích cây trồng..."):
         try:
@@ -320,15 +319,14 @@ with col_left:
             key="interactive_france_map"
         )
 
-        # Handle map clicks to update parcel position
+        # Handle map clicks to update parcel position and trigger analysis
         if map_data and map_data.get("last_clicked"):
             c_lat = round(map_data["last_clicked"]["lat"], 4)
             c_lon = round(map_data["last_clicked"]["lng"], 4)
-            if c_lat != st.session_state.lat or c_lon != st.session_state.lon:
+            if abs(c_lat - st.session_state.lat) > 1e-4 or abs(c_lon - st.session_state.lon) > 1e-4:
                 st.session_state.lat = c_lat
                 st.session_state.lon = c_lon
-                st.session_state.in_lat = c_lat
-                st.session_state.in_lon = c_lon
+                st.session_state.trigger_analyze = True
                 st.rerun()
 
         st.markdown(
