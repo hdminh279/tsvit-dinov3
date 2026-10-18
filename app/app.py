@@ -159,50 +159,86 @@ st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh 
 
 # 1. Controls Card
 with st.container(border=True):
-    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.3, 1.5, 1.4])
-    with c1:
-        lat_in = st.number_input(
-            "Vĩ độ",
-            value=float(st.session_state.lat),
-            format="%.4f",
-            min_value=-90.0,
-            max_value=90.0,
-            step=0.001
-        )
-    with c2:
-        lon_in = st.number_input(
-            "Kinh độ",
-            value=float(st.session_state.lon),
-            format="%.4f",
-            min_value=-180.0,
-            max_value=180.0,
-            step=0.001
-        )
-    with c3:
-        radius_in = st.number_input(
-            "Bán kính (m)",
-            value=int(st.session_state.radius),
-            min_value=300,
-            max_value=5000,
-            step=100
-        )
-    with c4:
-        date_in = st.date_input(
-            "Thời gian quan sát",
-            value=st.session_state.target_date,
-            format="DD/MM/YYYY"
-        )
-    with c5:
-        st.write("")
-        st.write("")
-        btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis")
+    loc_mode = st.radio(
+        "Phương thức chọn vị trí:",
+        ["Dùng chuột trên bản đồ (di tâm / nhấp chọn)", "Nhập tọa độ thủ công (Vĩ độ, Kinh độ)"],
+        horizontal=True,
+        key="loc_mode_selector"
+    )
 
-    # Sync state from inputs
-    if abs(lat_in - st.session_state.lat) > 1e-4 or abs(lon_in - st.session_state.lon) > 1e-4:
-        st.session_state.lat = lat_in
-        st.session_state.lon = lon_in
-    st.session_state.radius = radius_in
-    st.session_state.target_date = date_in
+    if loc_mode == "Nhập tọa độ thủ công (Vĩ độ, Kinh độ)":
+        c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.3, 1.5, 1.4])
+        with c1:
+            lat_in = st.number_input(
+                "Vĩ độ",
+                value=float(st.session_state.lat),
+                format="%.4f",
+                min_value=-90.0,
+                max_value=90.0,
+                step=0.001
+            )
+        with c2:
+            lon_in = st.number_input(
+                "Kinh độ",
+                value=float(st.session_state.lon),
+                format="%.4f",
+                min_value=-180.0,
+                max_value=180.0,
+                step=0.001
+            )
+        with c3:
+            radius_in = st.number_input(
+                "Bán kính (m)",
+                value=int(st.session_state.radius),
+                min_value=300,
+                max_value=5000,
+                step=100
+            )
+        with c4:
+            date_in = st.date_input(
+                "Thời gian quan sát",
+                value=st.session_state.target_date,
+                format="DD/MM/YYYY"
+            )
+        with c5:
+            st.write("")
+            st.write("")
+            btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis_manual")
+
+        if abs(lat_in - st.session_state.lat) > 1e-4 or abs(lon_in - st.session_state.lon) > 1e-4:
+            st.session_state.lat = lat_in
+            st.session_state.lon = lon_in
+        st.session_state.radius = radius_in
+        st.session_state.target_date = date_in
+    else:
+        c1, c2, c3, c4 = st.columns([2.2, 1.3, 1.5, 1.4])
+        with c1:
+            st.markdown(
+                f'<div style="padding-top: 24px; font-size: 13.5px; font-weight: 600; color: #1E293B;">'
+                f'📍 Tâm vị trí: <code style="color: #0F766E; font-size: 14px;">{st.session_state.lat:.4f}, {st.session_state.lon:.4f}</code></div>',
+                unsafe_allow_html=True
+            )
+        with c2:
+            radius_in = st.number_input(
+                "Bán kính (m)",
+                value=int(st.session_state.radius),
+                min_value=300,
+                max_value=5000,
+                step=100
+            )
+        with c3:
+            date_in = st.date_input(
+                "Thời gian quan sát",
+                value=st.session_state.target_date,
+                format="DD/MM/YYYY"
+            )
+        with c4:
+            st.write("")
+            st.write("")
+            btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis_mouse")
+
+        st.session_state.radius = radius_in
+        st.session_state.target_date = date_in
 
     st.markdown(
         f'<div class="input-caption">Tọa độ: {st.session_state.lat:.4f}, {st.session_state.lon:.4f} · Bán kính: {st.session_state.radius}m · Ngày: {st.session_state.target_date.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer & Bản đồ vệ tinh</div>',
@@ -217,10 +253,8 @@ curr_bounds = [
     [st.session_state.lat + dlat, st.session_state.lon + dlon]
 ]
 
-# Run analysis when requested, position clicked, or on cold start
-trigger_from_click = st.session_state.get('trigger_analyze', False)
-st.session_state.trigger_analyze = False
-should_analyze = btn_analyze or trigger_from_click or (st.session_state.analysis_results is None)
+# Run analysis ONLY when user explicitly clicks "Phân tích" or on initial cold start
+should_analyze = btn_analyze or (st.session_state.analysis_results is None)
 if should_analyze:
     with st.spinner("Đang kết nối Microsoft Planetary Computer và phân tích cây trồng..."):
         try:
@@ -289,15 +323,13 @@ with col_left:
             tooltip="Khu vực chọn phân tích"
         ).add_to(m)
 
-        # Center marker
-        folium.CircleMarker(
+        # Draggable Center Marker & Pulse Pin
+        folium.Marker(
             location=[st.session_state.lat, st.session_state.lon],
-            radius=5,
-            color="#10B981",
-            fill=True,
-            fill_color="#FFFFFF",
-            fill_opacity=1.0,
-            tooltip=f"Tọa độ: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}"
+            draggable=True,
+            icon=folium.Icon(color="green", icon="leaf"),
+            tooltip="Kéo thả hoặc nhấp chuột để di chuyển tâm ô",
+            popup=f"Tâm: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}"
         ).add_to(m)
 
         # Soft overlay of crop classification
@@ -319,14 +351,13 @@ with col_left:
             key="interactive_france_map"
         )
 
-        # Handle map clicks to update parcel position and trigger analysis
+        # Handle map clicks to update parcel position (NO AUTOMATIC INFERENCE, NO RELOAD SPAM)
         if map_data and map_data.get("last_clicked"):
             c_lat = round(map_data["last_clicked"]["lat"], 4)
             c_lon = round(map_data["last_clicked"]["lng"], 4)
             if abs(c_lat - st.session_state.lat) > 1e-4 or abs(c_lon - st.session_state.lon) > 1e-4:
                 st.session_state.lat = c_lat
                 st.session_state.lon = c_lon
-                st.session_state.trigger_analyze = True
                 st.rerun()
 
         st.markdown(
