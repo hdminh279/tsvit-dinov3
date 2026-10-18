@@ -259,21 +259,6 @@ class CropInferenceEngine:
                 doy_norm_tensor = torch.from_numpy(doy_norm).unsqueeze(0).float().to(self.device)
                 logits = self.model(x_tensor, doy_norm_tensor)
             
-            # Spatial prior calibration for vineyard (Class 13: Vườn nho)
-            # Bordeaux wine region bounding box: Lat 44°30'N - 45°35'N, Lon 0°15'E - 1°00'W
-            # WGS-84 decimal: lat 44.50 to 45.60, lon -1.05 to 0.25
-            is_wine_region = False
-            if lat is not None and lon is not None:
-                if 44.50 <= float(lat) <= 45.60 and -1.05 <= float(lon) <= 0.25:
-                    is_wine_region = True
-            if context_name:
-                c_low = str(context_name).lower()
-                if any(w in c_low for w in ["nho", "vigne", "vineyard", "bordeaux"]):
-                    is_wine_region = True
-
-            if is_wine_region:
-                logits[:, 13, :, :] += 3.0
-            
         total_pixels = 24 * 24
 
         # 1. Ground Truth mode (Benchmark sample parcels with RPG 2022 Cadastre)

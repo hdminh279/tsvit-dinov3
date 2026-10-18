@@ -158,7 +158,10 @@ def create_crop_overlay(
 # Predefined Real Samples (Major Agricultural Regions in France)
 LOCATION_PRESETS = {
     "Cánh đồng ngô Loiret": {
-        "lat": 47.9250, "lat_dir": "Bắc (°N)", "lon": 2.1450, "lon_dir": "Đông (°E)", "radius": 1150, "date": datetime.date(2022, 7, 20)
+        "lat": 47.9200, "lat_dir": "Bắc (°N)", "lon": 2.2500, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 20)
+    },
+    "Cánh đồng hướng dương Gers": {
+        "lat": 43.6563, "lat_dir": "Bắc (°N)", "lon": 0.5811, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 15)
     },
     "Cánh đồng lúa mì Beauce": {
         "lat": 48.1250, "lat_dir": "Bắc (°N)", "lon": 1.8540, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 6, 15)
@@ -166,14 +169,8 @@ LOCATION_PRESETS = {
     "Cánh đồng cải dầu Eure": {
         "lat": 49.0250, "lat_dir": "Bắc (°N)", "lon": 1.1520, "lon_dir": "Đông (°E)", "radius": 1100, "date": datetime.date(2022, 5, 10)
     },
-    "Cánh đồng hướng dương Gers": {
-        "lat": 43.6850, "lat_dir": "Bắc (°N)", "lon": 0.5920, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 15)
-    },
-    "Vườn nho Bordeaux": {
-        "lat": 44.8378, "lat_dir": "Bắc (°N)", "lon": 0.5792, "lon_dir": "Tây (°W)", "radius": 1200, "date": datetime.date(2022, 6, 20)
-    },
     "Tự nhập tọa độ": {
-        "lat": 44.8378, "lat_dir": "Bắc (°N)", "lon": 0.5792, "lon_dir": "Tây (°W)", "radius": 1200, "date": datetime.date(2022, 6, 20)
+        "lat": 47.9200, "lat_dir": "Bắc (°N)", "lon": 2.2500, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 20)
     }
 }
 
