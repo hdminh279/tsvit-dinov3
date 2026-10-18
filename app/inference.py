@@ -298,8 +298,8 @@ class CropInferenceEngine:
         unique_classes, counts = np.unique(pred_map_np, return_counts=True)
         zero_pct = float(counts[unique_classes == 0][0] / total_pixels * 100.0) if 0 in unique_classes else 0.0
 
-        # If background/unassigned class 0 dominates (>= 60%), extract agricultural classification (1-18)
-        if zero_pct >= 60.0:
+        # If background/unassigned class 0 is present (>= 25%), extract agricultural classification (1-18)
+        if zero_pct >= 25.0:
             agri_logits = logits.squeeze(0)[1:]  # [18, 24, 24]
             agri_probs = F.softmax(agri_logits, dim=0)
             agri_conf, agri_pred = torch.max(agri_probs, dim=0)

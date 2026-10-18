@@ -110,8 +110,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Cache Inference Engine
-@st.cache_resource
 def get_inference_engine():
     ckpt_candidates = [
         os.path.join(APP_DIR, "best.pth"),
@@ -193,43 +191,12 @@ def create_crop_overlay(
 
 
 # Predefined Real Samples
-SAMPLE_PRESETS = {
-    "Cánh đồng lúa mì": {
-        "pt_path": os.path.join(APP_DIR, "samples", "mau_lua_mi.pt"),
-        "lat": "48.1250",
-        "lon": "1.8540",
-        "radius": "1200",
-        "date": datetime.date(2022, 6, 15)
-    },
-    "Cánh đồng ngô": {
-        "pt_path": os.path.join(APP_DIR, "samples", "mau_ngo.pt"),
-        "lat": "48.2140",
-        "lon": "1.9210",
-        "radius": "1150",
-        "date": datetime.date(2022, 7, 20)
-    },
-    "Cánh đồng cải dầu": {
-        "pt_path": os.path.join(APP_DIR, "samples", "mau_cai_dau.pt"),
-        "lat": "48.0920",
-        "lon": "1.7850",
-        "radius": "1100",
-        "date": datetime.date(2022, 5, 10)
-    },
-    "Vườn cây ăn quả": {
-        "pt_path": os.path.join(APP_DIR, "samples", "mau_cay_an_qua.pt"),
-        "lat": "48.1560",
-        "lon": "1.8920",
-        "radius": "1050",
-        "date": datetime.date(2022, 8, 5)
-    }
-}
-
 LOCATION_PRESETS = {
-    "Cánh đồng lúa mì Beauce": {
-        "lat": 48.1250, "lon": 1.8540, "radius": 1200, "date": datetime.date(2022, 6, 15)
-    },
     "Cánh đồng ngô Loiret": {
         "lat": 48.2140, "lon": 1.9210, "radius": 1150, "date": datetime.date(2022, 7, 20)
+    },
+    "Cánh đồng lúa mì Beauce": {
+        "lat": 48.1250, "lon": 1.8540, "radius": 1200, "date": datetime.date(2022, 6, 15)
     },
     "Cánh đồng cải dầu Eure": {
         "lat": 48.0920, "lon": 1.7850, "radius": 1100, "date": datetime.date(2022, 5, 10)
@@ -241,7 +208,7 @@ LOCATION_PRESETS = {
         "lat": 10.3759, "lon": 105.4358, "radius": 1500, "date": datetime.date(2023, 3, 20)
     },
     "Tự nhập tọa độ": {
-        "lat": 48.1250, "lon": 1.8540, "radius": 1200, "date": datetime.date(2022, 6, 15)
+        "lat": 48.2140, "lon": 1.9210, "radius": 1150, "date": datetime.date(2022, 7, 20)
     }
 }
 
@@ -257,13 +224,9 @@ if 'current_display_img' not in st.session_state:
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 if 'patch_name' not in st.session_state:
-    st.session_state.patch_name = "Cánh đồng lúa mì"
-if 'active_planetary_loc' not in st.session_state:
-    st.session_state.active_planetary_loc = None
-if 'active_preset_choice' not in st.session_state:
-    st.session_state.active_preset_choice = None
-if 'active_input_mode' not in st.session_state:
-    st.session_state.active_input_mode = None
+    st.session_state.patch_name = "Cánh đồng ngô Loiret"
+if 'last_planetary_params' not in st.session_state:
+    st.session_state.last_planetary_params = None
 
 # Top Header
 st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh vệ tinh</div>', unsafe_allow_html=True)
@@ -274,16 +237,11 @@ with st.container(border=True):
         "Phương thức nạp dữ liệu",
         [
             "Ảnh vệ tinh trực tiếp Sentinel-2",
-            "Tải ảnh từ máy tính",
-            "Cánh đồng mẫu kiểm chuẩn"
+            "Tải ảnh từ máy tính"
         ],
         index=0,
         key="input_mode_selector"
     )
-
-    mode_changed = (st.session_state.active_input_mode != input_mode)
-    if mode_changed:
-        st.session_state.active_input_mode = input_mode
 
     if input_mode == "Ảnh vệ tinh trực tiếp Sentinel-2":
         loc_choice = st.selectbox(
@@ -313,12 +271,20 @@ with st.container(border=True):
             unsafe_allow_html=True
         )
 
+        current_params = f"{loc_choice}_{lat_in:.4f}_{lon_in:.4f}_{radius_in}_{date_in}"
+        has_gray_mask = False
+        if st.session_state.analysis_results is not None:
+            pm = st.session_state.analysis_results.get('prediction_map')
+            if pm is not None and (len(np.unique(pm)) == 1 and np.unique(pm)[0] == 0):
+                has_gray_mask = True
+
         should_fetch_planetary = (
             btn_fetch_planetary
-            or (mode_changed and loc_choice != "Tự nhập tọa độ")
-            or (loc_choice != "Tự nhập tọa độ" and st.session_state.active_planetary_loc != loc_choice)
+            or (st.session_state.get('last_planetary_params') != current_params)
             or (st.session_state.current_display_img is None)
+            or has_gray_mask
         )
+
 
         if should_fetch_planetary:
             with st.spinner("Đang kết nối Microsoft Planetary Computer và tải ảnh Sentinel-2..."):
@@ -393,53 +359,6 @@ with st.container(border=True):
                     st.session_state.patch_name = up_file.name
                     st.session_state.analysis_results = engine.run_inference(sits, doy)
 
-    else:
-        p_c1, p_c2 = st.columns([3, 1.2])
-        with p_c1:
-            preset_choice = st.selectbox(
-                "Cánh đồng mẫu",
-                options=list(SAMPLE_PRESETS.keys()),
-                index=0,
-                key="source_preset_select"
-            )
-        with p_c2:
-            st.write("")
-            st.write("")
-            btn_run_preset = st.button("Xem và phân tích", type="primary", use_container_width=True, key="btn_run_preset")
-
-        preset_info = SAMPLE_PRESETS[preset_choice]
-        st.markdown(
-            f'<div class="input-caption">Đang chọn: {preset_choice} · Tọa độ {preset_info["lat"]}, {preset_info["lon"]} · Bán kính {preset_info["radius"]} mét · Ngày {preset_info["date"].strftime("%d/%m/%Y")} · Dữ liệu chuẩn RPG 2022 Cadastre</div>',
-            unsafe_allow_html=True
-        )
-
-        should_load_preset = (
-            mode_changed
-            or st.session_state.active_preset_choice != preset_choice
-            or btn_run_preset
-            or st.session_state.analysis_results is None
-        )
-
-        if should_load_preset:
-            st.session_state.patch_name = preset_choice
-            st.session_state.active_preset_choice = preset_choice
-            pt_file = preset_info["pt_path"]
-            if os.path.exists(pt_file):
-                d = torch.load(pt_file, map_location='cpu', weights_only=False)
-                st.session_state.current_sits = d['image'].numpy()
-                st.session_state.current_doy = d['doy'].numpy()
-                st.session_state.current_label = d['label'].numpy() if 'label' in d else None
-                mid_t = st.session_state.current_sits.shape[0] // 2
-                rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
-                p2, p98 = np.percentile(rgb, (2, 98))
-                rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
-                st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
-                st.session_state.analysis_results = engine.run_inference(
-                    st.session_state.current_sits,
-                    st.session_state.current_doy,
-                    gt_label=st.session_state.current_label
-                )
-
 # 2. Main Content Columns
 col_left, col_right = st.columns([1.2, 0.85], gap="small")
 
@@ -478,6 +397,17 @@ with col_left:
 
         st.image(display_to_show, use_container_width=True)
 
+        if st.session_state.analysis_results is not None:
+            res = st.session_state.analysis_results
+            leg_stats = [s for s in res['crop_stats'] if s['percentage'] > 0.0][:5]
+            legend_html = " ".join([
+                f'<span style="display:inline-flex;align-items:center;margin-right:12px;font-size:12.5px;color:#334155;">'
+                f'<span style="background-color:{s["color"]};width:12px;height:12px;border-radius:2px;margin-right:5px;display:inline-block;"></span>'
+                f'<strong>{s["name_vi"]}</strong>&nbsp;{s["percentage"]:.1f}%</span>'
+                for s in leg_stats
+            ])
+            st.markdown(f'<div style="margin-top:6px;margin-bottom:8px;padding:6px 10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;display:flex;flex-wrap:wrap;">{legend_html}</div>', unsafe_allow_html=True)
+
         b_c1, b_c2 = st.columns([1.2, 2.5])
         with b_c1:
             if st.button("Làm mới ảnh", key="btn_reset_selection", use_container_width=True):
@@ -485,9 +415,7 @@ with col_left:
                 st.session_state.current_sits = None
                 st.session_state.current_doy = None
                 st.session_state.current_display_img = None
-                st.session_state.active_planetary_loc = None
-                st.session_state.active_preset_choice = None
-                st.session_state.patch_name = "Khu vực mẫu"
+                st.session_state.last_planetary_params = None
                 st.rerun()
         with b_c2:
             st.markdown('<div style="padding-top: 6px;" class="selection-badge">Kích thước ảnh: 540 × 320 pixel</div>', unsafe_allow_html=True)
