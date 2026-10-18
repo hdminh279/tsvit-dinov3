@@ -154,91 +154,73 @@ if 'analyzed_bbox' not in st.session_state:
 if 'analyzed_overlay_rgba' not in st.session_state:
     st.session_state.analyzed_overlay_rgba = None
 
+# Synchronize coordinates from map clicks before rendering input widgets
+map_state = st.session_state.get("interactive_france_map")
+if map_state and isinstance(map_state, dict):
+    clicked = map_state.get("last_clicked") or map_state.get("last_object_clicked")
+    if clicked and isinstance(clicked, dict) and "lat" in clicked and "lng" in clicked:
+        c_lat = round(float(clicked["lat"]), 4)
+        c_lon = round(float(clicked["lng"]), 4)
+        if (c_lat, c_lon) != st.session_state.get("last_synced_click"):
+            st.session_state.lat = c_lat
+            st.session_state.lon = c_lon
+            st.session_state.last_synced_click = (c_lat, c_lon)
+
 # Top Header
 st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh vệ tinh</div>', unsafe_allow_html=True)
 
 # 1. Controls Card
 with st.container(border=True):
-    loc_mode = st.radio(
-        "Phương thức chọn vị trí:",
-        ["Dùng chuột trên bản đồ (di tâm / nhấp chọn)", "Nhập tọa độ thủ công (Vĩ độ, Kinh độ)"],
-        horizontal=True,
-        key="loc_mode_selector"
-    )
+    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.3, 1.5, 1.4])
+    click_id = st.session_state.get("last_synced_click", (st.session_state.lat, st.session_state.lon))
+    with c1:
+        lat_in = st.number_input(
+            "Vĩ độ",
+            value=float(st.session_state.lat),
+            format="%.4f",
+            min_value=-90.0,
+            max_value=90.0,
+            step=0.001,
+            key=f"in_lat_{click_id}"
+        )
+    with c2:
+        lon_in = st.number_input(
+            "Kinh độ",
+            value=float(st.session_state.lon),
+            format="%.4f",
+            min_value=-180.0,
+            max_value=180.0,
+            step=0.001,
+            key=f"in_lon_{click_id}"
+        )
+    with c3:
+        radius_in = st.number_input(
+            "Bán kính (m)",
+            value=int(st.session_state.radius),
+            min_value=300,
+            max_value=5000,
+            step=100,
+            key="in_radius"
+        )
+    with c4:
+        date_in = st.date_input(
+            "Thời gian quan sát",
+            value=st.session_state.target_date,
+            format="DD/MM/YYYY",
+            key="in_date"
+        )
+    with c5:
+        st.write("")
+        st.write("")
+        btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis")
 
-    if loc_mode == "Nhập tọa độ thủ công (Vĩ độ, Kinh độ)":
-        c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.3, 1.5, 1.4])
-        with c1:
-            lat_in = st.number_input(
-                "Vĩ độ",
-                value=float(st.session_state.lat),
-                format="%.4f",
-                min_value=-90.0,
-                max_value=90.0,
-                step=0.001
-            )
-        with c2:
-            lon_in = st.number_input(
-                "Kinh độ",
-                value=float(st.session_state.lon),
-                format="%.4f",
-                min_value=-180.0,
-                max_value=180.0,
-                step=0.001
-            )
-        with c3:
-            radius_in = st.number_input(
-                "Bán kính (m)",
-                value=int(st.session_state.radius),
-                min_value=300,
-                max_value=5000,
-                step=100
-            )
-        with c4:
-            date_in = st.date_input(
-                "Thời gian quan sát",
-                value=st.session_state.target_date,
-                format="DD/MM/YYYY"
-            )
-        with c5:
-            st.write("")
-            st.write("")
-            btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis_manual")
-
-        if abs(lat_in - st.session_state.lat) > 1e-4 or abs(lon_in - st.session_state.lon) > 1e-4:
-            st.session_state.lat = lat_in
-            st.session_state.lon = lon_in
-        st.session_state.radius = radius_in
-        st.session_state.target_date = date_in
-    else:
-        c1, c2, c3, c4 = st.columns([2.2, 1.3, 1.5, 1.4])
-        with c1:
-            st.markdown(
-                f'<div style="padding-top: 24px; font-size: 13.5px; font-weight: 600; color: #1E293B;">'
-                f'📍 Tâm vị trí: <code style="color: #0F766E; font-size: 14px;">{st.session_state.lat:.4f}, {st.session_state.lon:.4f}</code></div>',
-                unsafe_allow_html=True
-            )
-        with c2:
-            radius_in = st.number_input(
-                "Bán kính (m)",
-                value=int(st.session_state.radius),
-                min_value=300,
-                max_value=5000,
-                step=100
-            )
-        with c3:
-            date_in = st.date_input(
-                "Thời gian quan sát",
-                value=st.session_state.target_date,
-                format="DD/MM/YYYY"
-            )
-        with c4:
-            st.write("")
-            st.write("")
-            btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis_mouse")
-
-        st.session_state.radius = radius_in
-        st.session_state.target_date = date_in
+    # If user typed manually into the inputs
+    if abs(lat_in - st.session_state.lat) > 1e-4 or abs(lon_in - st.session_state.lon) > 1e-4:
+        st.session_state.lat = lat_in
+        st.session_state.lon = lon_in
+        st.session_state.last_synced_click = (lat_in, lon_in)
+    st.session_state.radius = radius_in
+    st.session_state.target_date = date_in
 
     st.markdown(
         f'<div class="input-caption">Tọa độ: {st.session_state.lat:.4f}, {st.session_state.lon:.4f} · Bán kính: {st.session_state.radius}m · Ngày: {st.session_state.target_date.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer & Bản đồ vệ tinh</div>',
@@ -347,17 +329,21 @@ with col_left:
             m,
             height=460,
             use_container_width=True,
-            returned_objects=["last_clicked"],
+            returned_objects=["last_clicked", "last_object_clicked"],
             key="interactive_france_map"
         )
 
-        # Handle map clicks to update parcel position (NO AUTOMATIC INFERENCE, NO RELOAD SPAM)
-        if map_data and map_data.get("last_clicked"):
-            c_lat = round(map_data["last_clicked"]["lat"], 4)
-            c_lon = round(map_data["last_clicked"]["lng"], 4)
+        # Handle map clicks or marker movements to update parcel position (NO AUTOMATIC INFERENCE, NO RELOAD SPAM)
+        clicked_pt = None
+        if map_data:
+            clicked_pt = map_data.get("last_clicked") or map_data.get("last_object_clicked")
+        if clicked_pt and isinstance(clicked_pt, dict) and "lat" in clicked_pt and "lng" in clicked_pt:
+            c_lat = round(float(clicked_pt["lat"]), 4)
+            c_lon = round(float(clicked_pt["lng"]), 4)
             if abs(c_lat - st.session_state.lat) > 1e-4 or abs(c_lon - st.session_state.lon) > 1e-4:
                 st.session_state.lat = c_lat
                 st.session_state.lon = c_lon
+                st.session_state.last_synced_click = (c_lat, c_lon)
                 st.rerun()
 
         st.markdown(
