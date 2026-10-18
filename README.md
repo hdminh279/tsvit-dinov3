@@ -1,10 +1,62 @@
-# Cải tiến TSViT của tác giả Michail Tarasiou áp dụng mô hình DINO-v3
+# TSViT-DINOv3: Factorized Spatio-Temporal Vision Transformer for Crop Segmentation
 
-## Tổng quan
+Multi-temporal crop classification and dense semantic segmentation on Sentinel-2 L2A satellite image time series (SITS) with official French RPG 2022 ground truth.
 
-Phân loại và phân đoạn ngữ nghĩa cây trồng nông nghiệp từ chuỗi thời gian vệ tinh Sentinel-2 L2A (10 kênh phổ, độ phân giải 10m/20m) kết hợp nhãn mặt đất RPG 2022.
+Inherited and improved from **TSViT** ([Tarasiou et al., CVPR 2023](https://openaccess.thecvf.com/content/CVPR2023/html/Tarasiou_ViTs_for_SITS_Vision_Transformers_for_Satellite_Image_Time_Series_CVPR_2023_paper.html)) and [MichailTarasiou/DeepSatModels](https://github.com/MichailTarasiou/DeepSatModels).
 
-Mô hình gốc kế thừa: **TSViT** (CVPR 2023).
+---
+
+## Architecture Overview
+
+TSViT separates time-series satellite reasoning into factorized temporal and spatial stages:
+
+1. **Spectral Adapter:** Projects 10 Sentinel-2 bands (10m/20m resampled to 10m) into patch tokens ($24 \times 24 \to 144$ tokens with $2 \times 2$ patch size).
+2. **Temporal Transformer:** Attends across timestamps $T$ using Day-of-Year (DOY) positional encodings and per-class learnable query tokens.
+3. **Spatial Transformer Backbone (Upgraded to DINO-v3):** Replaces the randomly initialized vanilla ViT spatial encoder with self-supervised DINO-v3 representations. Sharpens crop parcel boundaries, reduces edge bleeding, and prevents overfitting on small geographic regions.
+4. **Dense Segmentation Head:** Projects patch representations directly to pixel-level logits `[B, num_classes, 24, 24]`.
+
+| Original TSViT Architecture | Improved TSViT-DINOv3 Architecture |
+| :---: | :---: |
+| ![Original TSViT](image/architecture.png) | ![TSViT-DINOv3](image/architecture_dinov3.png) |
+
+---
+
+## Loss Function: TSViT-DINOv3 vs. Original Paper
+
+#### Original Paper (CVPR 2023)
+
+The original implementation in `DeepSatModels` uses manual masking with an auxiliary binary mask $M \in \{0, 1\}^{B \times H \times W}$:
+
+$$\mathcal{L}_{\text{orig}} = - \frac{1}{\sum_{i} M_i} \sum_{i: M_i = 1} \log \frac{\exp(z_{i, y_i})}{\sum_{c=1}^C \exp(z_{i, c})}$$
+
+- Required `torch.gather()` on flattened logits indexed by boolean expanded masks:
+
+```python
+# DeepSatModels/metrics/loss_functions.py
+masked_logits_flat = logits_flat[mask_flat.repeat(1, nclasses)].view(-1, nclasses)
+masked_target_flat = target_flat[mask_flat].unsqueeze(dim=-1).to(torch.int64)
+masked_log_probs_flat = torch.nn.functional.log_softmax(masked_logits_flat)
+masked_losses_flat = -torch.gather(masked_log_probs_flat, dim=1, index=masked_target_flat)
+loss = masked_losses_flat.mean()
+```
+
+#### TSViT-DINOv3
+
+Leverages PyTorch native fused operator with `ignore_index`:
+
+$$\mathcal{L}_{\text{DINOv3}} = - \frac{1}{\sum_{i: y_i \neq 0} 1} \sum_{i: y_i \neq 0} \log \frac{\exp(z_{i, y_i})}{\sum_{c=0}^{C-1} \exp(z_{i, c})}$$
+
+- Direct execution on model outputs:
+
+```python
+# train.py
+criterion = nn.CrossEntropyLoss(ignore_index=0)
+loss = criterion(logits, y)  # logits: [B, C, H, W], y: [B, H, W]
+```
+
+---
+
+## References
 
 ```bibtex
 @inproceedings{tarasiou2023vits,
@@ -15,70 +67,3 @@ Mô hình gốc kế thừa: **TSViT** (CVPR 2023).
   year={2023}
 }
 ```
-
-Mã nguồn: [MichailTarasiou/DeepSatModels](https://github.com/MichailTarasiou/DeepSatModels).
-
----
-
-## Kiến trúc gốc của bài báo
-
-![Kiến trúc gốc TSViT](image/architecture.png)
-
----
-
-## Kiến trúc cải tiến với DINO-v3
-
-![Kiến trúc cải tiến TSViT với DINO-v3](image/architecture_dinov3.png)
-
----
-
-## Tóm tắt cải tiến
-
-- **Vị trí thay thế:** Khối `Spatial Encoder` trong luồng xử lý phân tách không gian - thời gian của TSViT.
-- **Lý do thay thế:** `Spatial Encoder` gốc dùng vanilla ViT khởi tạo ngẫu nhiên, học từ đầu trên tập ảnh vệ tinh nhỏ nên nhận diện ranh giới giữa bờ và thửa yếu và dễ quá khớp.
-- **Mục đích:** Khai thác đặc trưng thị giác tự giám sát từ Foundation Model DINO-v3 để bắt biên thửa đất sắc nét, giữ nguyên `Temporal Encoder` qua chuỗi thời gian.
-
----
-
-## Thay đổi cốt lõi trong mã nguồn
-
-Mã nguồn tại `src/models/tsvit_dinov3.py`:
-
-```python
-self.spectral_adapter = SpectralAdapter(
-    in_channels=in_channels,
-    dim=dim,
-    patch_size=patch_size
-)
-
-self.temporal_transformer = TemporalTransformer(
-    dim=dim,
-    num_classes=num_classes,
-    depth=temporal_depth,
-    heads=heads,
-    dim_head=dim_head,
-    mlp_ratio=mlp_ratio,
-    dropout=dropout
-)
-
-self.spatial_backbone = DINOv3SpatialEncoder(
-    dim=dim,
-    depth=spatial_depth,
-    heads=heads,
-    dim_head=dim_head,
-    mlp_ratio=mlp_ratio,
-    dropout=dropout,
-    model_name=dinov3_model_name
-)
-
-self.seg_head = nn.Sequential(
-    nn.LayerNorm(dim),
-    nn.Linear(dim, patch_size * patch_size)
-)
-```
-
----
-
-## Đang phát triển
-
-Đánh giá định lượng mức độ cải thiện độ chính xác (OA, Macro F1, mIoU) và hiệu năng suy luận so với mô hình gốc TSViT đang được tiến hành trên tập kiểm thử phân đoạn cây trồng RPG 2022.
