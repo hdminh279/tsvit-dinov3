@@ -1,21 +1,19 @@
 """
 Streamlit Web Application for Sentinel-2 Crop Classification & Segmentation:
 - Dark navy top banner: "Nhận diện cây trồng từ ảnh vệ tinh"
-- Parameters card: Vĩ độ, Kinh độ, Bán kính, Thời gian, Chọn ảnh mẫu/TIF/PT, Phân tích
-- Left card: Satellite parcel map with white rectangular selection box (430 x 321 px)
-- Right card: Real crop classification results, Pie/Donut breakdown, Confidence progress bars, CSV download
+- Parameters card: Lấy ảnh trực tiếp Sentinel-2, Tải ảnh từ máy tính, Cánh đồng mẫu
+- Left card: Hiển thị ảnh vệ tinh toàn khung hình
+- Right card: Biểu đồ tròn phân loại cây trồng, thanh tự tin, xuất CSV
 """
 
 import sys
 import os
-import io
-import glob
 import datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from PIL import Image, ImageDraw
+from PIL import Image
 
 # Ensure project root & app directory in sys.path
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -34,7 +32,7 @@ except Exception:
     from inference import CropInferenceEngine
     from planetary import fetch_planetary_sentinel2
 
-from src.data.constants import CROP_CLASSES_VI, CROP_CLASSES_EN
+from src.data.constants import CROP_CLASSES_VI
 
 # Page configuration
 st.set_page_config(

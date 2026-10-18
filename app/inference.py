@@ -22,8 +22,7 @@ if PROJECT_ROOT not in sys.path:
 from src.models.tsvit_dinov3 import TSViT_DINOv3
 from src.models.dinov3_backbone import PreNorm, Attention, FeedForward
 from src.data.constants import (
-    CROP_CLASSES_VI, CROP_CLASSES_EN, NUM_CLASSES,
-    S2_MEAN_10B, S2_STD_10B, DOY_DIVISOR
+    CROP_CLASSES_VI, CROP_CLASSES_EN, NUM_CLASSES
 )
 from src.data.transforms import NormalizeS2, NormalizeDOY
 
