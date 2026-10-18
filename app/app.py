@@ -1,9 +1,9 @@
 """
 Streamlit Web Application for Sentinel-2 Crop Classification & Segmentation:
-- Dark navy top banner: "Nhận diện cây trồng từ ảnh vệ tinh"
-- Parameters card: Lấy ảnh trực tiếp Sentinel-2, Tải ảnh từ máy tính, Cánh đồng mẫu
-- Left card: Hiển thị ảnh vệ tinh toàn khung hình
-- Right card: Biểu đồ tròn phân loại cây trồng, thanh tự tin, xuất CSV
+- Top banner: Satellite Crop Recognition
+- Parameters card: Sentinel-2 Live Streaming, File Upload, Benchmark Presets
+- Left card: Full-resolution satellite parcel visualization
+- Right card: Crop classification pie breakdown, confidence indicators, CSV export
 """
 
 import sys
@@ -392,7 +392,7 @@ with st.container(border=True):
 # 2. Main Content Columns
 col_left, col_right = st.columns([1.2, 0.85], gap="small")
 
-# --- LEFT CARD: SATELLITE MAP & SELECTION ---
+# --- LEFT CARD: SATELLITE PARCEL MAP ---
 with col_left:
     with st.container(border=True):
         if st.session_state.current_display_img is not None:
