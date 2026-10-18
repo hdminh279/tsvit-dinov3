@@ -157,7 +157,7 @@ if 'analyzed_overlay_rgba' not in st.session_state:
 # Synchronize coordinates from map clicks before rendering input widgets
 map_state = st.session_state.get("interactive_france_map")
 if map_state and isinstance(map_state, dict):
-    clicked = map_state.get("last_clicked") or map_state.get("last_object_clicked")
+    clicked = map_state.get("last_clicked")
     if clicked and isinstance(clicked, dict) and "lat" in clicked and "lng" in clicked:
         c_lat = round(float(clicked["lat"]), 4)
         c_lon = round(float(clicked["lng"]), 4)
@@ -305,12 +305,11 @@ with col_left:
             tooltip="Khu vực chọn phân tích"
         ).add_to(m)
 
-        # Draggable Center Marker & Pulse Pin
+        # Center Marker
         folium.Marker(
             location=[st.session_state.lat, st.session_state.lon],
-            draggable=True,
             icon=folium.Icon(color="green", icon="leaf"),
-            tooltip="Kéo thả hoặc nhấp chuột để di chuyển tâm ô",
+            tooltip="Tâm vị trí đã chọn",
             popup=f"Tâm: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}"
         ).add_to(m)
 
@@ -329,14 +328,14 @@ with col_left:
             m,
             height=460,
             use_container_width=True,
-            returned_objects=["last_clicked", "last_object_clicked"],
+            returned_objects=["last_clicked"],
             key="interactive_france_map"
         )
 
-        # Handle map clicks or marker movements to update parcel position (NO AUTOMATIC INFERENCE, NO RELOAD SPAM)
+        # Handle map clicks to update parcel position (NO AUTOMATIC INFERENCE, NO RELOAD SPAM)
         clicked_pt = None
         if map_data:
-            clicked_pt = map_data.get("last_clicked") or map_data.get("last_object_clicked")
+            clicked_pt = map_data.get("last_clicked")
         if clicked_pt and isinstance(clicked_pt, dict) and "lat" in clicked_pt and "lng" in clicked_pt:
             c_lat = round(float(clicked_pt["lat"]), 4)
             c_lon = round(float(clicked_pt["lng"]), 4)
