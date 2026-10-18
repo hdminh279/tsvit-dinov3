@@ -150,44 +150,9 @@ def create_crop_overlay(
         return img_pil
 
     # Semi-transparent blending (45% alpha)
-    blended = Image.blend(img_pil.convert("RGBA"), mask_pil.convert("RGBA"), alpha=0.45).convert("RGBA")
-    draw = ImageDraw.Draw(blended)
-
-    # Place text pill tags for dominant crops
-    if crop_stats:
-        placed_boxes = []
-        for crop in crop_stats[:4]:
-            cls_id = crop["class_id"]
-            pct = crop["percentage"]
-            if pct < 3.0 or cls_id == 0:
-                continue
-            ys, xs = np.where(pred_map == cls_id)
-            if len(xs) == 0:
-                continue
-            cx = int(np.mean(xs) / 24.0 * W)
-            cy = int(np.mean(ys) / 24.0 * H)
-
-            name = crop["name_vi"].replace("(", "").replace(")", "").strip()
-            label_text = f"{name} {pct:.0f}%"
-
-            tw = len(label_text) * 8 + 18
-            th = 22
-            x1 = max(10, min(W - tw - 10, cx - tw // 2))
-            y1 = max(10, min(H - th - 10, cy - th // 2))
-
-            for bx1, by1, bx2, by2 in placed_boxes:
-                if abs(x1 - bx1) < tw and abs(y1 - by1) < th:
-                    y1 = min(H - th - 10, by2 + 6)
-
-            placed_boxes.append((x1, y1, x1 + tw, y1 + th))
-            col_rgb = CLASS_ID_TO_RGB.get(cls_id, (52, 152, 219))
-
-            # Rounded pill badge with crop color accent
-            draw.rounded_rectangle([x1, y1, x1 + tw, y1 + th], radius=4, fill=(23, 37, 61, 220))
-            draw.rectangle([x1, y1 + 3, x1 + 4, y1 + th - 3], fill=col_rgb)
-            draw.text((x1 + 10, y1 + 4), label_text, fill=(255, 255, 255))
-
+    blended = Image.blend(img_pil.convert("RGBA"), mask_pil.convert("RGBA"), alpha=0.45)
     return blended.convert("RGB")
+
 
 
 # Predefined Real Samples
@@ -397,17 +362,6 @@ with col_left:
 
         st.image(display_to_show, use_container_width=True)
 
-        if st.session_state.analysis_results is not None:
-            res = st.session_state.analysis_results
-            leg_stats = [s for s in res['crop_stats'] if s['percentage'] > 0.0][:5]
-            legend_html = " ".join([
-                f'<span style="display:inline-flex;align-items:center;margin-right:12px;font-size:12.5px;color:#334155;">'
-                f'<span style="background-color:{s["color"]};width:12px;height:12px;border-radius:2px;margin-right:5px;display:inline-block;"></span>'
-                f'<strong>{s["name_vi"]}</strong>&nbsp;{s["percentage"]:.1f}%</span>'
-                for s in leg_stats
-            ])
-            st.markdown(f'<div style="margin-top:6px;margin-bottom:8px;padding:6px 10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;display:flex;flex-wrap:wrap;">{legend_html}</div>', unsafe_allow_html=True)
-
         b_c1, b_c2 = st.columns([1.2, 2.5])
         with b_c1:
             if st.button("Làm mới ảnh", key="btn_reset_selection", use_container_width=True):
@@ -420,10 +374,6 @@ with col_left:
         with b_c2:
             st.markdown('<div style="padding-top: 6px;" class="selection-badge">Kích thước ảnh: 540 × 320 pixel</div>', unsafe_allow_html=True)
 
-        st.markdown(
-            '<div class="status-text">Đã hoàn tất phân tích nhận diện cây trồng.</div>',
-            unsafe_allow_html=True
-        )
 
 # --- RIGHT CARD: RESULTS & CONFIDENCE ---
 with col_right:
