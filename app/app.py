@@ -166,11 +166,14 @@ LOCATION_PRESETS = {
     "Cánh đồng cải dầu Eure": {
         "lat": 48.0920, "lon": 1.7850, "radius": 1100, "date": datetime.date(2022, 5, 10)
     },
-    "Vùng nông nghiệp Hà Nội": {
-        "lat": 21.0153, "lon": 105.8245, "radius": 1500, "date": datetime.date(2023, 4, 15)
+    "Cánh đồng hướng dương Gers": {
+        "lat": 43.6460, "lon": 0.5850, "radius": 1200, "date": datetime.date(2022, 7, 15)
     },
-    "Vùng lúa nước An Giang": {
-        "lat": 10.3759, "lon": 105.4358, "radius": 1500, "date": datetime.date(2023, 3, 20)
+    "Vùng ngũ cốc Champagne": {
+        "lat": 48.9560, "lon": 4.3640, "radius": 1200, "date": datetime.date(2022, 6, 15)
+    },
+    "Vườn nho Bordeaux": {
+        "lat": 44.8378, "lon": -0.5792, "radius": 1200, "date": datetime.date(2022, 6, 20)
     },
     "Tự nhập tọa độ": {
         "lat": 48.2140, "lon": 1.9210, "radius": 1150, "date": datetime.date(2022, 7, 20)
@@ -199,7 +202,7 @@ st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh 
 # 1. Controls Card
 with st.container(border=True):
     input_mode = st.selectbox(
-        "Phương thức nạp dữ liệu",
+        "Nạp dữ liệu",
         [
             "Ảnh vệ tinh trực tiếp Sentinel-2",
             "Tải ảnh từ máy tính"
@@ -210,11 +213,12 @@ with st.container(border=True):
 
     if input_mode == "Ảnh vệ tinh trực tiếp Sentinel-2":
         loc_choice = st.selectbox(
-            "Vị trí cánh đồng quan sát",
+            "Vị trí",
             options=list(LOCATION_PRESETS.keys()),
             index=0,
             key="planetary_location_choice"
         )
+
         preset_data = LOCATION_PRESETS[loc_choice]
 
         c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.4, 1.8, 1.8])
