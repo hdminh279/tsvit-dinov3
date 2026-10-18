@@ -1,8 +1,8 @@
 """
 Streamlit Web Application for Sentinel-2 Crop Classification & Segmentation:
 - Top banner: Satellite Crop Recognition
-- Parameters card: Sentinel-2 Live Streaming, File Upload, Benchmark Presets
-- Left card: Full-resolution satellite parcel visualization
+- Controls card: Latitude, Longitude, Radius, Date, Analyze button
+- Left card: Interactive Leaflet satellite map (zoomable across France, click-to-select, soft overlay)
 - Right card: Crop classification pie breakdown, confidence indicators, CSV export
 """
 
@@ -14,7 +14,10 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from PIL import Image, ImageDraw
+from PIL import Image
+import folium
+from folium.raster_layers import ImageOverlay
+from streamlit_folium import st_folium
 
 # Ensure project root & app directory in sys.path
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -45,14 +48,12 @@ st.set_page_config(
 # Custom Clean CSS (High contrast, bright light theme, zero negative margins)
 st.markdown("""
 <style>
-    /* Force Bright Background */
     .stApp {
         background-color: #F8FAFC !important;
         color: #1E293B !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     
-    /* Top Dark Navy Header Banner */
     .top-navy-banner {
         background-color: #17253D;
         color: #FFFFFF !important;
@@ -68,7 +69,6 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.08);
     }
 
-    /* Subtitle caption under inputs */
     .input-caption {
         font-size: 12.5px;
         color: #64748B;
@@ -76,21 +76,6 @@ st.markdown("""
         margin-bottom: 4px;
     }
 
-    /* Status text below image */
-    .status-text {
-        color: #6B21A8;
-        font-size: 13.5px;
-        font-weight: 600;
-        margin-top: 8px;
-    }
-
-    .selection-badge {
-        font-size: 13px;
-        font-weight: 500;
-        color: #475569;
-    }
-
-    /* Result Card Title */
     .result-title {
         font-size: 18px;
         font-weight: 700;
@@ -98,7 +83,6 @@ st.markdown("""
         margin-bottom: 8px;
     }
 
-    /* Confidence Table */
     .conf-header {
         font-size: 13px;
         font-weight: 600;
@@ -109,6 +93,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 def get_inference_engine():
     ckpt_candidates = [
@@ -123,269 +108,233 @@ def get_inference_engine():
             break
     return CropInferenceEngine(checkpoint_path=ckpt_path)
 
+
 engine = get_inference_engine()
 
-def create_crop_overlay(
-    img_pil: Image.Image,
-    pred_map: Optional[np.ndarray],
-    crop_stats: Optional[list],
-    mode: str = "overlay"
-) -> Image.Image:
-    """Overlays colored semantic segmentation mask and crop name pill tags onto satellite image."""
-    if pred_map is None or img_pil is None:
-        return img_pil
 
-    W, H = img_pil.size
-    rgb_mask = np.zeros((24, 24, 3), dtype=np.uint8)
-    for r in range(24):
-        for c in range(24):
+def create_soft_overlay_rgba(pred_map: np.ndarray, alpha_val: int = 175) -> np.ndarray:
+    """Creates a smooth, anti-aliased RGBA image from the 24x24 prediction map for soft overlay."""
+    H, W = pred_map.shape
+    rgb_arr = np.zeros((H, W, 3), dtype=np.uint8)
+    for r in range(H):
+        for c in range(W):
             cls_id = int(pred_map[r, c])
-            rgb_mask[r, c] = CLASS_ID_TO_RGB.get(cls_id, (52, 152, 219))
+            rgb_arr[r, c] = CLASS_ID_TO_RGB.get(cls_id, (52, 152, 219))
 
-    mask_pil = Image.fromarray(rgb_mask).resize((W, H), Image.Resampling.NEAREST)
+    # Bilinear upsample to 360x360 for smooth parcel transitions
+    img_pil = Image.fromarray(rgb_arr).resize((360, 360), Image.Resampling.BILINEAR)
+    r_arr = np.array(img_pil.convert("RGBA"))
+    r_arr[:, :, 3] = alpha_val
 
-    if mode == "mask":
-        return mask_pil
-    elif mode == "raw":
-        return img_pil
+    # Soft vignette / feathered border 6px
+    feather = 6
+    for i in range(feather):
+        edge_alpha = int(alpha_val * (i + 1) / (feather + 1))
+        r_arr[i, :, 3] = np.minimum(r_arr[i, :, 3], edge_alpha)
+        r_arr[359 - i, :, 3] = np.minimum(r_arr[359 - i, :, 3], edge_alpha)
+        r_arr[:, i, 3] = np.minimum(r_arr[:, i, 3], edge_alpha)
+        r_arr[:, 359 - i, 3] = np.minimum(r_arr[:, 359 - i, 3], edge_alpha)
 
-    # Semi-transparent blending (45% alpha)
-    blended = Image.blend(img_pil.convert("RGBA"), mask_pil.convert("RGBA"), alpha=0.45)
-    return blended.convert("RGB")
+    return r_arr
 
-
-
-# Predefined Real Samples (Major Agricultural Regions in France)
-LOCATION_PRESETS = {
-    "Cánh đồng ngô Loiret": {
-        "lat": 47.9200, "lat_dir": "Bắc (°N)", "lon": 2.2500, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 20)
-    },
-    "Cánh đồng hướng dương Gers": {
-        "lat": 43.6563, "lat_dir": "Bắc (°N)", "lon": 0.5811, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 15)
-    },
-    "Cánh đồng lúa mì Beauce": {
-        "lat": 48.1250, "lat_dir": "Bắc (°N)", "lon": 1.8540, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 6, 15)
-    },
-    "Cánh đồng cải dầu Eure": {
-        "lat": 49.0250, "lat_dir": "Bắc (°N)", "lon": 1.1520, "lon_dir": "Đông (°E)", "radius": 1100, "date": datetime.date(2022, 5, 10)
-    },
-    "Tự nhập tọa độ": {
-        "lat": 47.9200, "lat_dir": "Bắc (°N)", "lon": 2.2500, "lon_dir": "Đông (°E)", "radius": 1200, "date": datetime.date(2022, 7, 20)
-    }
-}
 
 # Initialize session state variables
-if 'current_sits' not in st.session_state:
-    st.session_state.current_sits = None
-if 'current_doy' not in st.session_state:
-    st.session_state.current_doy = None
-if 'current_label' not in st.session_state:
-    st.session_state.current_label = None
-if 'current_display_img' not in st.session_state:
-    st.session_state.current_display_img = None
+if 'lat' not in st.session_state:
+    st.session_state.lat = 47.9200
+if 'lon' not in st.session_state:
+    st.session_state.lon = 2.2500
+if 'radius' not in st.session_state:
+    st.session_state.radius = 1200
+if 'target_date' not in st.session_state:
+    st.session_state.target_date = datetime.date(2022, 7, 20)
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
-if 'patch_name' not in st.session_state:
-    st.session_state.patch_name = "Cánh đồng ngô Loiret"
-if 'last_planetary_params' not in st.session_state:
-    st.session_state.last_planetary_params = None
+if 'analyzed_bbox' not in st.session_state:
+    st.session_state.analyzed_bbox = None
+if 'analyzed_overlay_rgba' not in st.session_state:
+    st.session_state.analyzed_overlay_rgba = None
 
 # Top Header
 st.markdown('<div class="top-navy-banner">Nhận diện cây trồng từ ảnh vệ tinh</div>', unsafe_allow_html=True)
 
 # 1. Controls Card
 with st.container(border=True):
-    input_mode = st.selectbox(
-        "Nạp dữ liệu",
-        [
-            "Ảnh vệ tinh trực tiếp Sentinel-2",
-            "Tải ảnh từ máy tính"
-        ],
-        index=0,
-        key="input_mode_selector"
+    c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.3, 1.5, 1.4])
+    with c1:
+        lat_in = st.number_input(
+            "Vĩ độ",
+            value=float(st.session_state.lat),
+            format="%.4f",
+            min_value=-90.0,
+            max_value=90.0,
+            step=0.001,
+            key="in_lat"
+        )
+    with c2:
+        lon_in = st.number_input(
+            "Kinh độ",
+            value=float(st.session_state.lon),
+            format="%.4f",
+            min_value=-180.0,
+            max_value=180.0,
+            step=0.001,
+            key="in_lon"
+        )
+    with c3:
+        radius_in = st.number_input(
+            "Bán kính (m)",
+            value=int(st.session_state.radius),
+            min_value=300,
+            max_value=5000,
+            step=100,
+            key="in_rad"
+        )
+    with c4:
+        date_in = st.date_input(
+            "Thời gian quan sát",
+            value=st.session_state.target_date,
+            format="DD/MM/YYYY",
+            key="in_date"
+        )
+    with c5:
+        st.write("")
+        st.write("")
+        btn_analyze = st.button("Phân tích", type="primary", use_container_width=True, key="btn_run_analysis")
+
+    # Sync state from inputs
+    st.session_state.lat = lat_in
+    st.session_state.lon = lon_in
+    st.session_state.radius = radius_in
+    st.session_state.target_date = date_in
+
+    st.markdown(
+        f'<div class="input-caption">Tọa độ: {lat_in:.4f}, {lon_in:.4f} · Bán kính: {radius_in}m · Ngày: {date_in.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer & Bản đồ vệ tinh</div>',
+        unsafe_allow_html=True
     )
 
-    if input_mode == "Ảnh vệ tinh trực tiếp Sentinel-2":
-        loc_choice = st.selectbox(
-            "Vị trí",
-            options=list(LOCATION_PRESETS.keys()),
-            index=0,
-            key="planetary_location_choice"
-        )
+# Compute bounding box
+dlat = st.session_state.radius / 111320.0
+dlon = st.session_state.radius / (111320.0 * np.cos(np.radians(st.session_state.lat)) + 1e-6)
+curr_bounds = [
+    [st.session_state.lat - dlat, st.session_state.lon - dlon],
+    [st.session_state.lat + dlat, st.session_state.lon + dlon]
+]
 
-        preset_data = LOCATION_PRESETS[loc_choice]
-
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([1.3, 1.1, 1.3, 1.1, 1.1, 1.5, 1.6])
-        with c1:
-            lat_val = st.number_input("Vĩ độ", value=float(preset_data["lat"]), format="%.4f", min_value=0.0, max_value=90.0, step=0.001, key=f"in_lat_val_{loc_choice}")
-        with c2:
-            lat_dir_idx = 0 if preset_data["lat_dir"] == "Bắc (°N)" else 1
-            lat_dir = st.selectbox("Hướng vĩ", ["Bắc (°N)", "Nam (°S)"], index=lat_dir_idx, key=f"in_lat_dir_{loc_choice}")
-        with c3:
-            lon_val = st.number_input("Kinh độ", value=float(preset_data["lon"]), format="%.4f", min_value=0.0, max_value=180.0, step=0.001, key=f"in_lon_val_{loc_choice}")
-        with c4:
-            lon_dir_idx = 0 if preset_data["lon_dir"] == "Đông (°E)" else 1
-            lon_dir = st.selectbox("Hướng kinh", ["Đông (°E)", "Tây (°W)"], index=lon_dir_idx, key=f"in_lon_dir_{loc_choice}")
-        with c5:
-            radius_in = st.number_input("Bán kính mét", value=int(preset_data["radius"]), min_value=300, max_value=5000, step=100, key=f"in_rad_{loc_choice}")
-        with c6:
-            date_in = st.date_input("Thời gian quan sát", value=preset_data["date"], format="DD/MM/YYYY", key=f"in_date_{loc_choice}")
-        with c7:
-            st.write("")
-            st.write("")
-            btn_fetch_planetary = st.button("Lấy ảnh và phân tích", type="primary", use_container_width=True, key="btn_planetary_fetch")
-
-        # Convert compass directions to signed WGS-84 coordinates for Microsoft Planetary Computer
-        lat_in = lat_val if lat_dir == "Bắc (°N)" else -lat_val
-        lon_in = lon_val if lon_dir == "Đông (°E)" else -lon_val
-
-        st.markdown(
-            f'<div class="input-caption">Tọa độ: {lat_val:.4f}° {lat_dir.split()[0]} ({lat_dir.split()[1]}), {lon_val:.4f}° {lon_dir.split()[0]} ({lon_dir.split()[1]}) · WGS-84: ({lat_in:.4f}, {lon_in:.4f}) · Bán kính {radius_in} mét · Ngày {date_in.strftime("%d/%m/%Y")} · Dữ liệu Microsoft Planetary Computer</div>',
-            unsafe_allow_html=True
-        )
-
-        current_params = f"{loc_choice}_{lat_in:.4f}_{lon_in:.4f}_{radius_in}_{date_in}"
-        has_gray_mask = False
-        if st.session_state.analysis_results is not None:
-            pm = st.session_state.analysis_results.get('prediction_map')
-            if pm is not None and (len(np.unique(pm)) == 1 and np.unique(pm)[0] == 0):
-                has_gray_mask = True
-
-        should_fetch_planetary = (
-            btn_fetch_planetary
-            or (st.session_state.get('last_planetary_params') != current_params)
-            or (st.session_state.current_display_img is None)
-            or has_gray_mask
-        )
-
-        if should_fetch_planetary:
-            with st.spinner("Đang kết nối Microsoft Planetary Computer và tải ảnh Sentinel-2..."):
-                try:
-                    p_img, p_meta = fetch_planetary_sentinel2(
-                        lat=lat_in,
-                        lon=lon_in,
-                        radius=float(radius_in),
-                        target_date_str=date_in.strftime("%Y-%m-%d")
-                    )
-                    p_sits, p_doy = CropInferenceEngine.simulate_sits_from_image(p_img)
-                    st.session_state.current_display_img = p_img
-                    st.session_state.current_sits = p_sits
-                    st.session_state.current_doy = p_doy
-                    st.session_state.current_label = None
-                    st.session_state.patch_name = f"Sentinel-2 ngày {p_meta['acquisition_date']} phủ mây {p_meta['cloud_cover']}%"
-                    st.session_state.analysis_results = engine.run_inference(
-                        p_sits,
-                        p_doy,
-                        lat=lat_in,
-                        lon=lon_in,
-                        context_name=loc_choice
-                    )
-                    st.session_state.active_planetary_loc = loc_choice
-                    if btn_fetch_planetary:
-                        st.success(f"Đã tải thành công ảnh Sentinel-2 ngày {p_meta['acquisition_date']} với độ phủ mây {p_meta['cloud_cover']}%")
-                except Exception as e:
-                    st.error(f"Lỗi tải ảnh từ Planetary Computer: {e}")
-
-    elif input_mode == "Tải ảnh từ máy tính":
-        up_c1, up_c2, up_c3 = st.columns([3, 1.5, 1.2])
-        with up_c1:
-            up_file = st.file_uploader(
-                "Chọn tệp ảnh vệ tinh hoặc viễn thám",
-                type=["tif", "tiff", "png", "jpg", "jpeg", "pt"],
-                key="custom_uploader_key"
+# Run analysis when requested or on cold start
+should_analyze = btn_analyze or (st.session_state.analysis_results is None)
+if should_analyze:
+    with st.spinner("Đang kết nối Microsoft Planetary Computer và phân tích cây trồng..."):
+        try:
+            p_img, p_meta = fetch_planetary_sentinel2(
+                lat=st.session_state.lat,
+                lon=st.session_state.lon,
+                radius=float(st.session_state.radius),
+                target_date_str=st.session_state.target_date.strftime("%Y-%m-%d")
             )
-        with up_c2:
-            date_upload = st.date_input("Thời gian quan sát", value=datetime.date(2022, 6, 15), format="DD/MM/YYYY", key="upload_date_field")
-        with up_c3:
-            st.write("")
-            st.write("")
-            btn_analyze_upload = st.button("Phân tích ảnh", type="primary", use_container_width=True, key="btn_analyze_up")
-
-        st.markdown(
-            '<div class="input-caption">Tự động chuẩn hóa dải màu 16 bit và trích xuất chuỗi thời gian nhận diện cây trồng</div>',
-            unsafe_allow_html=True
-        )
-
-        if (up_file is not None and st.session_state.patch_name != up_file.name) or btn_analyze_upload:
-            if up_file is not None:
-                fname = up_file.name.lower()
-                if fname.endswith(".pt"):
-                    loaded = torch.load(up_file, map_location='cpu', weights_only=False)
-                    st.session_state.current_sits = loaded.get('image', loaded.get('s2')).numpy()
-                    st.session_state.current_doy = loaded.get('doy', loaded.get('dates')).numpy()
-                    st.session_state.current_label = loaded.get('label', None)
-                    if st.session_state.current_label is not None and hasattr(st.session_state.current_label, 'numpy'):
-                        st.session_state.current_label = st.session_state.current_label.numpy()
-                    mid_t = st.session_state.current_sits.shape[0] // 2
-                    rgb = st.session_state.current_sits[mid_t, [2, 1, 0], :, :].transpose(1, 2, 0)
-                    p2, p98 = np.percentile(rgb, (2, 98))
-                    rgb_norm = np.clip((rgb - p2) / (p98 - p2 + 1e-6), 0.0, 1.0)
-                    st.session_state.current_display_img = Image.fromarray((rgb_norm * 255).astype(np.uint8)).resize((540, 320), Image.Resampling.NEAREST)
-                    st.session_state.patch_name = up_file.name
-                    st.session_state.analysis_results = engine.run_inference(
-                        st.session_state.current_sits,
-                        st.session_state.current_doy,
-                        gt_label=st.session_state.current_label
-                    )
-                else:
-                    bytes_data = up_file.read()
-                    disp_pil, sits, doy = CropInferenceEngine.read_any_image_file(bytes_data)
-                    st.session_state.current_sits = sits
-                    st.session_state.current_doy = doy
-                    st.session_state.current_label = None
-                    st.session_state.current_display_img = disp_pil.resize((540, 320), Image.Resampling.NEAREST)
-                    st.session_state.patch_name = up_file.name
-                    st.session_state.analysis_results = engine.run_inference(sits, doy, context_name=up_file.name)
+            p_sits, p_doy = CropInferenceEngine.simulate_sits_from_image(p_img)
+            res = engine.run_inference(p_sits, p_doy, lat=st.session_state.lat, lon=st.session_state.lon)
+            
+            st.session_state.analysis_results = res
+            st.session_state.analyzed_overlay_rgba = create_soft_overlay_rgba(res['prediction_map'])
+            st.session_state.analyzed_bbox = curr_bounds
+            if btn_analyze:
+                st.success(f"Phân tích hoàn tất: Sentinel-2 ngày {p_meta['acquisition_date']} (phủ mây {p_meta['cloud_cover']}%)")
+        except Exception as e:
+            st.error(f"Lỗi: {e}")
 
 # 2. Main Content Columns
 col_left, col_right = st.columns([1.2, 0.85], gap="small")
 
-# --- LEFT CARD: SATELLITE PARCEL MAP ---
+# --- LEFT CARD: INTERACTIVE SATELLITE MAP ---
 with col_left:
     with st.container(border=True):
-        v_col1, v_col2 = st.columns([1.6, 2.4])
-        with v_col1:
-            st.markdown('<div style="font-size: 13.5px; font-weight: 600; color: #1E293B; padding-top: 6px;">Hiển thị ảnh vệ tinh</div>', unsafe_allow_html=True)
-        with v_col2:
-            view_mode = st.selectbox(
-                "Chế độ hiển thị",
-                ["Dán đè nhãn lên ảnh", "Ảnh vệ tinh gốc", "Bản đồ nhãn màu"],
-                index=0,
-                label_visibility="collapsed",
-                key="display_view_mode"
-            )
+        m_head1, m_head2 = st.columns([2, 1.5])
+        with m_head1:
+            st.markdown('<div style="font-size: 14px; font-weight: 600; color: #1E293B; padding-top: 4px;">Bản đồ vệ tinh tương tác</div>', unsafe_allow_html=True)
+        with m_head2:
+            show_layer = st.checkbox("Hiển thị lớp nhãn màu", value=True, key="cb_show_overlay")
 
-        mode_key = "overlay"
-        if view_mode == "Ảnh vệ tinh gốc":
-            mode_key = "raw"
-        elif view_mode == "Bản đồ nhãn màu":
-            mode_key = "mask"
+        m = folium.Map(
+            location=[st.session_state.lat, st.session_state.lon],
+            zoom_start=14,
+            tiles=None,
+            control_scale=True
+        )
 
-        if st.session_state.current_display_img is not None:
-            pred_map = st.session_state.analysis_results.get('prediction_map') if st.session_state.analysis_results else None
-            crop_stats = st.session_state.analysis_results.get('crop_stats') if st.session_state.analysis_results else None
-            display_to_show = create_crop_overlay(
-                st.session_state.current_display_img,
-                pred_map,
-                crop_stats,
-                mode=mode_key
-            )
-        else:
-            display_to_show = Image.new("RGB", (540, 320), "#234E24")
+        # Esri World Imagery (Same high-res basemap as crop.loanhviet.dev)
+        folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attr="Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics",
+            name="Vệ tinh Esri",
+            max_zoom=19,
+            control=False
+        ).add_to(m)
 
-        st.image(display_to_show, use_container_width=True)
+        # Place names and boundaries overlay
+        folium.TileLayer(
+            tiles="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri Labels",
+            name="Địa danh & Ranh giới",
+            overlay=True,
+            control=True
+        ).add_to(m)
 
-        b_c1, b_c2 = st.columns([1.2, 2.5])
-        with b_c1:
-            if st.button("Làm mới ảnh", key="btn_reset_selection", use_container_width=True):
-                st.session_state.analysis_results = None
-                st.session_state.current_sits = None
-                st.session_state.current_doy = None
-                st.session_state.current_display_img = None
-                st.session_state.last_planetary_params = None
+        # Smooth styled bounding box around chosen area
+        folium.Rectangle(
+            bounds=curr_bounds,
+            color="#22C55E",
+            weight=2.5,
+            opacity=0.9,
+            dash_array="6, 6",
+            fill=False,
+            tooltip="Khu vực chọn phân tích"
+        ).add_to(m)
+
+        # Center marker
+        folium.CircleMarker(
+            location=[st.session_state.lat, st.session_state.lon],
+            radius=5,
+            color="#10B981",
+            fill=True,
+            fill_color="#FFFFFF",
+            fill_opacity=1.0,
+            tooltip=f"Tọa độ: {st.session_state.lat:.4f}, {st.session_state.lon:.4f}"
+        ).add_to(m)
+
+        # Soft overlay of crop classification
+        if show_layer and st.session_state.analyzed_overlay_rgba is not None and st.session_state.analyzed_bbox is not None:
+            ImageOverlay(
+                image=st.session_state.analyzed_overlay_rgba,
+                bounds=st.session_state.analyzed_bbox,
+                opacity=0.70,
+                interactive=True,
+                zindex=400,
+                tooltip="Kết quả phân loại cây trồng"
+            ).add_to(m)
+
+        map_data = st_folium(
+            m,
+            height=460,
+            use_container_width=True,
+            returned_objects=["last_clicked"],
+            key="interactive_france_map"
+        )
+
+        # Handle map clicks to update parcel position
+        if map_data and map_data.get("last_clicked"):
+            c_lat = round(map_data["last_clicked"]["lat"], 4)
+            c_lon = round(map_data["last_clicked"]["lng"], 4)
+            if c_lat != st.session_state.lat or c_lon != st.session_state.lon:
+                st.session_state.lat = c_lat
+                st.session_state.lon = c_lon
+                st.session_state.in_lat = c_lat
+                st.session_state.in_lon = c_lon
                 st.rerun()
-        with b_c2:
-            st.markdown('<div style="padding-top: 6px;" class="selection-badge">Kích thước ảnh: 540 × 320 pixel</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="input-caption" style="margin-top: 6px;">💡 <b>Mẹo:</b> Nhấp chuột bất kỳ đâu trên bản đồ nước Pháp để di chuyển ô vuông và bấm <b>Phân tích</b>. Bạn có thể phóng to thu nhỏ bản đồ tự do.</div>',
+            unsafe_allow_html=True
+        )
 
 
 # --- RIGHT CARD: RESULTS & CONFIDENCE ---
