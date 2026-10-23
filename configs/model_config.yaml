@@ -28,5 +28,5 @@ SOLVER:
   lr_min: 0.00001
   weight_decay: 0.0001
   warmup_epochs: 5
-  loss_function: "cross_entropy"
-  ignore_index: 0
+  loss_function: "masked_cross_entropy"
+  ignore_index: 19

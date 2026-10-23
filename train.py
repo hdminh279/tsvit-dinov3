@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from src.models.tsvit_dinov3 import TSViT_DINOv3
+from src.models.losses import MaskedCrossEntropyLoss
 from src.data.dataset_builder import S2CropDatasetBuilder
 from src.data.dataloader import get_dataloaders
 from src.data.constants import NUM_CLASSES
@@ -67,7 +68,9 @@ def main():
         dropout=m_cfg.get("dropout", 0.1)
     ).to(device)
 
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
+    s_cfg = cfg.get("SOLVER", {})
+    ignore_index = s_cfg.get("ignore_index", 19)
+    criterion = MaskedCrossEntropyLoss(ignore_index=ignore_index, reduction="mean")
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-5)
 

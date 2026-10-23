@@ -1,0 +1,392 @@
+/* ==========================================================================
+   Crop Classification & Segmentation - Production Dashboard Styles
+   High-contrast, bold 2px borders, single-page responsive layout
+   ========================================================================== */
+
+/* Universal typography */
+*, html, body, button, input, select, textarea, span, p, div, label, b, table {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* Background & layout container */
+html, body, .stApp {
+    background-color: #F8FAFC !important;
+    color: #0F172A !important;
+}
+
+/* Hide default Streamlit chrome */
+header[data-testid="stHeader"], footer, #MainMenu,
+[data-testid="stToolbar"], [data-testid="stDecoration"] {
+    display: none !important;
+}
+
+/* Toast container positioning */
+[data-testid="stToastContainer"] {
+    top: auto !important;
+    bottom: 20px !important;
+    right: 20px !important;
+}
+
+/* Main app padding */
+.block-container {
+    padding: 0.5rem 1.0rem 0.5rem 1.0rem !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+div[data-testid="stVerticalBlock"] {
+    gap: 0.45rem !important;
+}
+
+.block-container [data-testid="stElementContainer"]:has(style) {
+    display: none !important;
+}
+
+/* ==========================================================================
+   1. Top Banner
+   ========================================================================== */
+.top-navy-banner {
+    background-color: #0F172A;
+    color: #FFFFFF !important;
+    height: 38px;
+    line-height: 38px;
+    padding: 0 16px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
+    margin-bottom: 16px !important;
+    border: 2px solid #0F172A;
+}
+
+/* ==========================================================================
+   2. Controls Card
+   ========================================================================== */
+.st-key-controls_card {
+    background: #FFFFFF;
+    border: 2px solid #0F172A !important;
+    border-radius: 10px !important;
+    padding: 8px 16px 12px 16px !important;
+    box-sizing: border-box;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05);
+    margin-bottom: 4px !important;
+}
+
+/* Labels: Fully visible Vietnamese text with ample line-height */
+.st-key-controls_card [data-testid="stWidgetLabel"] {
+    min-height: 20px !important;
+    margin-bottom: 3px !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+}
+.st-key-controls_card [data-testid="stWidgetLabel"] label,
+.st-key-controls_card [data-testid="stWidgetLabel"] p {
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+    line-height: 1.35 !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* --------------------------------------------------------------------------
+   STRICT SINGLE BORDER: Eliminate any nested/inner/double borders
+   -------------------------------------------------------------------------- */
+/* Step 1: Strip borders from all children & descendants of number & date inputs */
+.st-key-controls_card [data-testid="stNumberInput"] *,
+.st-key-controls_card [data-testid="stDateInput"] *,
+.st-key-controls_card [data-testid="stDateInputField"] * {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* Step 2: Apply the ONE AND ONLY 2px border strictly to the outer container */
+.st-key-controls_card [data-testid="stNumberInputContainer"],
+.st-key-controls_card [data-testid="stDateInputField"] {
+    border: 2px solid #0F172A !important;
+    border-radius: 8px !important;
+    background-color: #FFFFFF !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    box-sizing: border-box !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+    overflow: hidden !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+/* Subtle focus highlight on the single border */
+.st-key-controls_card [data-testid="stNumberInputContainer"]:focus-within,
+.st-key-controls_card [data-testid="stDateInputField"]:focus-within {
+    border-color: #2563EB !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25) !important;
+}
+
+/* Input text */
+.st-key-controls_card input {
+    height: 32px !important;
+    font-weight: 700 !important;
+    font-size: 13.5px !important;
+    color: #0F172A !important;
+    -webkit-text-fill-color: #0F172A !important;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 8px !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* Stepper buttons */
+.st-key-controls_card [data-testid="stNumberInputStepDown"],
+.st-key-controls_card [data-testid="stNumberInputStepUp"],
+.st-key-controls_card [data-testid="stNumberInputContainer"] button {
+    border: none !important;
+    background: transparent !important;
+    color: #334155 !important;
+    font-weight: 700 !important;
+    height: 32px !important;
+    width: 26px !important;
+    transition: background-color 0.1s ease !important;
+}
+.st-key-controls_card [data-testid="stNumberInputStepDown"]:hover,
+.st-key-controls_card [data-testid="stNumberInputStepUp"]:hover,
+.st-key-controls_card [data-testid="stNumberInputContainer"] button:hover {
+    background-color: #F1F5F9 !important;
+    color: #0F172A !important;
+}
+
+/* Primary Analyze button */
+.st-key-controls_card div.stButton {
+    margin-top: 23px !important;
+}
+.st-key-controls_card div.stButton > button {
+    height: 36px !important;
+    min-height: 36px !important;
+    font-weight: 700 !important;
+    font-size: 13.5px !important;
+    background-color: #1D4ED8 !important;
+    color: #FFFFFF !important;
+    border: 2px solid #1E40AF !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 3px rgba(29, 78, 216, 0.3) !important;
+    transition: background-color 0.15s ease !important;
+}
+.st-key-controls_card div.stButton > button:hover {
+    background-color: #1E40AF !important;
+    border-color: #172554 !important;
+}
+
+/* ==========================================================================
+   3. Main Cards: Left (Map) & Right (Results)
+   ========================================================================== */
+div[data-testid="stHorizontalBlock"]:has(.st-key-map_card, .st-key-result_card) {
+    gap: 0.65rem !important;
+}
+
+.st-key-map_card, .st-key-result_card {
+    background: #FFFFFF;
+    border: 2px solid #0F172A !important;
+    border-radius: 12px !important;
+    padding: 12px 14px 14px 14px !important;
+    box-sizing: border-box;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05);
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* Map Header */
+.map-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #0F172A;
+    margin-bottom: 2px;
+}
+
+/* Checkbox styling below title */
+.st-key-map_card [data-testid="stCheckbox"] {
+    margin-bottom: 6px !important;
+    margin-top: 0 !important;
+}
+.st-key-map_card [data-testid="stCheckbox"] label p {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #334155 !important;
+}
+
+/* Map iframe: Perfectly tuned 470px height (not cut off at bottom) */
+.st-key-map_card iframe {
+    border-radius: 8px !important;
+    border: 2px solid #0F172A !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    height: 470px !important;
+    display: block !important;
+}
+
+/* Map Tip: Inside card, borderless, clean and aligned */
+.map-tip {
+    font-size: 11.5px !important;
+    color: #475569 !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 6px 2px 0 2px !important;
+    margin-top: 6px !important;
+    margin-bottom: 2px !important;
+    line-height: 1.35 !important;
+    box-sizing: border-box !important;
+}
+
+/* ==========================================================================
+   4. Right Card: Analysis Results (470px height, balanced 180px pie chart)
+   ========================================================================== */
+.result-wrap {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    min-height: 470px;
+}
+
+.result-top-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.result-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #0F172A;
+    margin-bottom: 4px;
+}
+
+/* Solid Pie Chart (Circular, NOT Donut) - 180px balanced size */
+.pie-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 4px 0 10px 0;
+}
+.pie-chart {
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    position: relative;
+    border: 2px solid #0F172A;
+    box-sizing: border-box;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+.pie-label {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    color: #FFFFFF;
+    text-align: center;
+    line-height: 1.15;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+    pointer-events: none;
+    white-space: nowrap;
+}
+.pie-label b {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 800;
+}
+
+/* Crop list breakdown - Natural tight spacing between header & first row */
+.crop-head {
+    display: grid;
+    grid-template-columns: 1fr 65px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #0F172A;
+    border-bottom: 2px solid #0F172A;
+    padding-bottom: 4px;
+    margin-top: 6px;
+    margin-bottom: 6px;
+}
+.crop-head span:nth-child(2), .crop-top span:nth-child(2) {
+    text-align: right;
+}
+.crop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 0 !important;
+    margin-bottom: 10px !important;
+}
+.crop-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.crop-top {
+    display: grid;
+    grid-template-columns: 1fr 65px;
+    align-items: center;
+    font-size: 12px;
+    line-height: 1.25;
+}
+.crop-name {
+    font-weight: 600;
+    color: #0F172A;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    display: inline-block;
+    flex: 0 0 auto;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+}
+.crop-conf {
+    font-weight: 700;
+    font-size: 12px;
+    color: #0F172A;
+}
+.bar {
+    height: 6px;
+    background: #E2E8F0;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #CBD5E1;
+}
+.bar > div {
+    height: 100%;
+    border-radius: 3px;
+}
+
+/* Download button - Clean separation from crop list */
+.st-key-result_card div.stDownloadButton {
+    margin-top: 10px !important;
+    margin-bottom: 2px !important;
+}
+.st-key-result_card div.stDownloadButton > button {
+    height: 36px !important;
+    min-height: 36px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    background-color: #F8FAFC !important;
+    color: #0F172A !important;
+    border: 2px solid #0F172A !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease !important;
+}
+.st-key-result_card div.stDownloadButton > button:hover {
+    background-color: #E2E8F0 !important;
+}
