@@ -152,7 +152,7 @@ All 14 tests pass across three test suites:
 streamlit run app/app.py --server.port 8501
 ```
 
-![Crop Classification Dashboard Preview](image/dashboard_preview.png)
+![Crop Classification Dashboard Preview](image/UI.png)
 *Figure 4: Single-screen interactive dashboard with Esri satellite imagery, parcel segmentation overlay, and crop distribution statistics.*
 
 ---
