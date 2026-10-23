@@ -284,6 +284,15 @@ $$\mathcal{L} = -\frac{1}{|V|} \sum_{i \in V} \log\left(\frac{\exp(z_{i, y_i})}{
 
 ---
 
+## Contributors & Attribution
+
+| Contributor | Profile & Role |
+| :--- | :--- |
+| **[Ho Duc Minh](https://github.com/hdminh279)** | Project maintainer, DINOv3 architecture integration, data pipeline, and Streamlit dashboard |
+| **[Michail Tarasiou](https://github.com/michaeltrs)** | Original author of [TSViT (CVPR 2023)](https://arxiv.org/abs/2301.04944) and [DeepSatModels](https://github.com/michaeltrs/DeepSatModels) baseline |
+
+---
+
 ## References
 
 - **TSViT Paper:** [ViTs for SITS: Vision Transformers for Satellite Image Time Series](https://arxiv.org/abs/2301.04944) (CVPR 2023) by Michail Tarasiou.
